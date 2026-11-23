@@ -28,7 +28,8 @@ import psutil
 from PySide6.QtCore import (Qt, QTimer, QRectF, QFileInfo, QObject, Signal, QByteArray, QPointF,
                             QPoint, QMimeData, QLocale, QTranslator, QLibraryInfo, QTime, QUrl)
 from PySide6.QtGui import (QPainter, QColor, QPen, QIcon, QGuiApplication,
-                           QDrag, QCursor, QPixmap, QImage, QPolygonF, QDesktopServices)
+                           QDrag, QCursor, QPixmap, QImage, QPolygonF, QDesktopServices,
+                           QLinearGradient, QPainterPath)
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (
     QApplication, QWidget, QFrame, QVBoxLayout, QHBoxLayout,
@@ -206,29 +207,31 @@ def install_qt_translator(code):
 THEMES = {
     "dark": {
         "label": "Scuro",
-        "bg": "#2b2e36", "text": "#dfe3ea", "strong": "#ffffff", "panel": "#31343d",
-        "border": "#23252b", "line": "#4a4f5c", "hover": "#3b3f4a", "raised": "#3a3e49",
-        "raised_hover": "#454a58", "row_border": "#262930", "row_hover": "#343844",
-        "toggle_bg": "#2f323b", "muted": "#9aa0ad", "input": "#1b1d23",
-        "check_border": "#5a5f6e", "danger": "#e5484d", "solo": "#e0b422",
-        "solo_text": "#1b1d23", "handle": "#ffffff", "handle_border": "#ffffff",
-        "eye_on": "#ffffff", "eye_off": "#6b7080", "row_shown": "#ffffff",
-        "row_hidden": "#8a90a0", "row_idle": "#5d6272", "hint": "#6b7080",
-        "meter_text": "#9aa0ad", "dim_g": "#1d5e2b", "dim_y": "#6e5d12", "dim_r": "#6e1f1c",
-        "duck": "#f0883e", "duck_bg": "#3d3328",
+        "bg": "#0f1115", "text": "#e6e8ee", "strong": "#ffffff", "panel": "#171a21",
+        "border": "#222631", "line": "#323848", "hover": "#1e222b", "raised": "#232733",
+        "raised_hover": "#2c3141", "row_border": "#1b1e26", "row_hover": "#1c2029",
+        "toggle_bg": "#13161c", "muted": "#8a91a3", "input": "#12151b",
+        "check_border": "#3d4352", "danger": "#f43f5e", "danger_bg": "#3a1420",
+        "solo": "#fbbf24", "solo_text": "#111318", "handle": "#ffffff", "handle_border": "#ffffff",
+        "eye_on": "#e6e8ee", "eye_off": "#4b5263", "row_shown": "#e6e8ee",
+        "row_hidden": "#8a91a3", "row_idle": "#4b5263", "hint": "#6b7285",
+        "meter_text": "#4f5668", "meter_track": "#232733",
+        "dim_g": "#1d5e2b", "dim_y": "#6e5d12", "dim_r": "#6e1f1c",
+        "duck": "#fb923c", "duck_bg": "#231910",
     },
     "light": {
         "label": "Chiaro",
-        "bg": "#eceef2", "text": "#1f2330", "strong": "#000000", "panel": "#ffffff",
-        "border": "#c5c9d3", "line": "#aab0bd", "hover": "#e3e6ee", "raised": "#dde1ea",
-        "raised_hover": "#d2d7e2", "row_border": "#d5d9e2", "row_hover": "#e4e8f0",
-        "toggle_bg": "#e2e5ec", "muted": "#5a6072", "input": "#ffffff",
-        "check_border": "#8a90a0", "danger": "#d12f35", "solo": "#e0b422",
-        "solo_text": "#1b1d23", "handle": "#ffffff", "handle_border": "#8a90a0",
-        "eye_on": "#1f2330", "eye_off": "#9aa0ad", "row_shown": "#1f2330",
-        "row_hidden": "#5a6072", "row_idle": "#9aa0ad", "hint": "#6b7285",
-        "meter_text": "#555b6b", "dim_g": "#b9dfc1", "dim_y": "#ecdfa0", "dim_r": "#eab8b5",
-        "duck": "#d9730d", "duck_bg": "#fff1e0",
+        "bg": "#f1f3f7", "text": "#1c2030", "strong": "#000000", "panel": "#ffffff",
+        "border": "#e2e5ec", "line": "#ccd2dc", "hover": "#eceff4", "raised": "#eceff4",
+        "raised_hover": "#e0e4ec", "row_border": "#eceef2", "row_hover": "#e9ecf2",
+        "toggle_bg": "#e9ecf1", "muted": "#5b6274", "input": "#ffffff",
+        "check_border": "#b5bccb", "danger": "#e11d48", "danger_bg": "#ffe4e9",
+        "solo": "#f59e0b", "solo_text": "#111318", "handle": "#ffffff", "handle_border": "#c7ccd6",
+        "eye_on": "#1c2030", "eye_off": "#a3aab8", "row_shown": "#1c2030",
+        "row_hidden": "#5b6274", "row_idle": "#a3aab8", "hint": "#7a8194",
+        "meter_text": "#9aa1b0", "meter_track": "#e7eaf0",
+        "dim_g": "#b9dfc1", "dim_y": "#ecdfa0", "dim_r": "#eab8b5",
+        "duck": "#ea580c", "duck_bg": "#fff1e6",
     },
     "contrast": {
         "label": "Alto contrasto",
@@ -236,11 +239,12 @@ THEMES = {
         "border": "#ffffff", "line": "#ffffff", "hover": "#262626", "raised": "#1a1a1a",
         "raised_hover": "#333333", "row_border": "#808080", "row_hover": "#262626",
         "toggle_bg": "#000000", "muted": "#ffffff", "input": "#000000",
-        "check_border": "#ffffff", "danger": "#ff6b6b", "solo": "#ffd400",
+        "check_border": "#ffffff", "danger": "#ff6b6b", "danger_bg": "#400000", "solo": "#ffd400",
         "solo_text": "#000000", "handle": "#ffffff", "handle_border": "#ffffff",
         "eye_on": "#ffffff", "eye_off": "#bdbdbd", "row_shown": "#ffffff",
         "row_hidden": "#d0d0d0", "row_idle": "#8c8c8c", "hint": "#d0d0d0",
-        "meter_text": "#ffffff", "dim_g": "#1d5e2b", "dim_y": "#6e5d12", "dim_r": "#6e1f1c",
+        "meter_text": "#ffffff", "meter_track": "#262626",
+        "dim_g": "#1d5e2b", "dim_y": "#6e5d12", "dim_r": "#6e1f1c",
         "duck": "#ff9f1a", "duck_bg": "#332000",
     },
 }
@@ -286,48 +290,75 @@ def configure_appearance(theme, accent, scale_pct):
 
 
 _STYLE_TEMPLATE = """
-QWidget { background: ${bg}; color: ${text}; font-family: 'Segoe UI'; ${base_font} }
-QToolTip { background: ${panel}; color: ${text}; border: 1px solid ${line}; }
-QFrame#strip { background: ${panel}; border: 1px solid ${border}; }
+QWidget { background: ${bg}; color: ${text}; font-family: 'Segoe UI Variable Text', 'Segoe UI';
+          ${base_font} }
+QToolTip { background: ${panel}; color: ${text}; border: 1px solid ${line}; border-radius: ${p6};
+           padding: ${p4} ${p6}; }
+QFrame#strip { background: ${panel}; border: 1px solid ${border}; border-radius: ${p12}; }
+QFrame#strip:hover { border-color: ${line}; }
 QFrame#strip QLabel { background: transparent; border: none; }
-QFrame#master { background: ${panel}; border: 1px solid ${accent}; }
+QFrame#master { background: ${panel}; border: 1px solid ${border}; border-top: ${p3} solid ${accent};
+                border-radius: ${p12}; }
 QFrame#master QLabel { background: transparent; border: none; }
-QLabel#name { font-weight: 600; font-size: ${p11}; }
-QSlider::groove:vertical { background: ${accent}; width: ${p4}; border-radius: ${p2}; }
-QSlider::handle:vertical { background: ${handle}; border: 1px solid ${handle_border};
-                           height: ${p22}; width: ${p14}; margin: 0 -${p6}; border-radius: ${p6}; }
-QSlider::groove:horizontal { background: ${accent}; height: ${p4}; border-radius: ${p2}; }
-QSlider::handle:horizontal { background: ${handle}; border: 1px solid ${handle_border};
-                             width: ${p14}; height: ${p14}; margin: -${p6} 0; border-radius: ${p6}; }
+QLabel#name { font-weight: 600; font-size: ${p12}; }
+QLabel#value { color: ${muted}; font-size: ${p11}; font-weight: 600; }
+QLabel#appTitle { font-size: ${p15}; font-weight: 700; color: ${strong}; padding: 0 ${p6}; }
+QSlider { background: transparent; }
+QSlider::groove:vertical { background: transparent; width: ${p6}; }
+QSlider::add-page:vertical { background: ${accent}; width: ${p6}; border-radius: ${p3}; }
+QSlider::sub-page:vertical { background: ${meter_track}; width: ${p6}; border-radius: ${p3}; }
+QSlider::handle:vertical { background: ${handle}; border: ${p3} solid ${accent};
+                           height: ${p12}; width: ${p12}; margin: 0 -${p6}; border-radius: ${p9}; }
+QSlider::groove:horizontal { background: ${meter_track}; height: ${p6}; border-radius: ${p3}; }
+QSlider::sub-page:horizontal { background: ${accent}; height: ${p6}; border-radius: ${p3}; }
+QSlider::handle:horizontal { background: ${handle}; border: ${p3} solid ${accent};
+                             width: ${p12}; height: ${p12}; margin: -${p6} 0; border-radius: ${p9}; }
+QSlider:disabled::add-page:vertical { background: ${line}; }
 QPushButton { background: transparent; border: none; font-size: ${p16}; }
 QPushButton:checked { color: ${danger}; }
-QPushButton#key { font-size: ${p10}; border: 1px solid ${line};
-                  border-radius: ${p3}; padding: ${p3}; }
-QPushButton#key:hover { background: ${hover}; }
+QPushButton#mute { background: ${raised}; border-radius: ${p8}; padding: ${p3} ${p8}; font-size: ${p14}; }
+QPushButton#mute:hover { background: ${raised_hover}; }
+QPushButton#mute:checked { background: ${danger_bg}; color: ${danger}; }
+QPushButton#key { font-size: ${p10}; color: ${muted}; border: 1px dashed ${line};
+                  border-radius: ${p8}; padding: ${p3} ${p6}; }
+QPushButton#key:hover { background: ${hover}; color: ${text}; }
 QLabel#panelTitle { background: ${raised}; font-weight: 600; padding: ${p5} ${p8}; }
 QPushButton#panelTab { background: transparent; color: ${muted}; font-size: ${p12}; font-weight: 600;
-                       border: none; border-radius: 0; padding: ${p5} ${p8}; }
+                       border: none; border-radius: ${p8}; padding: ${p5} ${p10}; margin: ${p2}; }
 QPushButton#panelTab:hover { background: ${row_hover}; color: ${strong}; }
 QPushButton#panelTab:checked { background: ${raised}; color: ${strong}; }
-QFrame#row { background: ${bg}; border-bottom: 1px solid ${row_border}; }
+QFrame#row { background: transparent; border: none; border-radius: ${p8}; }
 QFrame#row:hover { background: ${row_hover}; }
 QFrame#row QLabel { background: transparent; }
-QFrame#strip:disabled { background: ${bg}; }
+QFrame#strip:disabled { background: ${bg}; border-style: dashed; }
 QFrame#strip[ducked="true"] { background: ${duck_bg}; border: 1px solid ${duck}; }
-QPushButton#toggleFonti { background: ${toggle_bg}; color: ${muted}; font-size: ${p10};
-                          border-left: 1px solid ${border}; border-right: 1px solid ${border}; }
+QPushButton#toggleFonti { background: transparent; color: ${muted}; font-size: ${p10};
+                          border: none; border-radius: ${p6}; }
 QPushButton#toggleFonti:hover { background: ${raised}; color: ${strong}; }
-QSplitter::handle { background: ${border}; }
+QSplitter::handle { background: transparent; }
 QSplitter::handle:hover { background: ${accent}; }
-QMenu { background: ${panel}; border: 1px solid ${border}; padding: ${p3}; }
-QMenu::item { padding: ${p5} ${p26}; }
+QScrollArea { border: none; background: transparent; }
+QScrollBar:vertical { background: transparent; width: ${p8}; margin: ${p2}; }
+QScrollBar:horizontal { background: transparent; height: ${p8}; margin: ${p2}; }
+QScrollBar::handle:vertical { background: ${line}; border-radius: ${p2}; min-height: ${p24}; }
+QScrollBar::handle:horizontal { background: ${line}; border-radius: ${p2}; min-width: ${p24}; }
+QScrollBar::handle:hover { background: ${muted}; }
+QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }
+QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
+QMenu { background: ${panel}; border: 1px solid ${border}; border-radius: ${p8}; padding: ${p4}; }
+QMenu::item { padding: ${p6} ${p26}; border-radius: ${p6}; }
 QMenu::item:selected { background: ${accent}; color: ${on_accent}; }
-QDialog QPushButton { background: ${raised}; border: 1px solid ${line};
-                      border-radius: ${p3}; padding: ${p4} ${p16}; font-size: ${p12}; }
+QMenu::separator { height: 1px; background: ${border}; margin: ${p4} ${p8}; }
+QDialog QPushButton { background: ${raised}; border: 1px solid ${border};
+                      border-radius: ${p6}; padding: ${p5} ${p16}; font-size: ${p12}; }
 QDialog QPushButton:hover { background: ${raised_hover}; }
-QLineEdit { background: ${input}; border: 1px solid ${line}; padding: ${p4}; }
-QComboBox { background: ${input}; border: 1px solid ${line}; padding: ${p3} ${p8}; }
-QSpinBox { background: ${input}; border: 1px solid ${line}; padding: ${p3}; padding-right: ${p20}; }
+QDialog QPushButton:default { background: ${accent}; color: ${on_accent}; border-color: ${accent}; }
+QLineEdit { background: ${input}; border: 1px solid ${border}; border-radius: ${p8};
+            padding: ${p5} ${p8}; }
+QLineEdit:focus { border-color: ${accent}; }
+QComboBox { background: ${input}; border: 1px solid ${border}; border-radius: ${p6}; padding: ${p4} ${p8}; }
+QSpinBox { background: ${input}; border: 1px solid ${border}; border-radius: ${p6};
+           padding: ${p3}; padding-right: ${p20}; }
 QSpinBox::up-button { subcontrol-origin: border; subcontrol-position: top right; width: ${p16};
                       border-left: 1px solid ${line}; background: ${raised}; }
 QSpinBox::down-button { subcontrol-origin: border; subcontrol-position: bottom right; width: ${p16};
@@ -337,18 +368,24 @@ QSpinBox::up-arrow { image: url("${arrow_up}"); width: ${p9}; height: ${p6}; }
 QSpinBox::down-arrow { image: url("${arrow_down}"); width: ${p9}; height: ${p6}; }
 QComboBox QAbstractItemView { background: ${panel}; border: 1px solid ${line};
                               selection-background-color: ${accent}; selection-color: ${on_accent}; }
-QPushButton#solo { font-size: ${p11}; font-weight: 700; border: 1px solid ${line};
-                   border-radius: ${p3}; min-width: ${p22}; padding: ${p2} ${p4}; }
-QPushButton#solo:checked { background: ${solo}; color: ${solo_text}; border-color: ${solo}; }
-QPushButton#bar { font-size: ${p14}; border: 1px solid transparent;
-                  border-radius: ${p3}; padding: ${p2} ${p7}; }
+QPushButton#solo { font-size: ${p11}; font-weight: 700; background: ${raised}; color: ${muted};
+                   border-radius: ${p8}; min-width: ${p22}; padding: ${p4} ${p8}; }
+QPushButton#solo:hover { background: ${raised_hover}; color: ${text}; }
+QPushButton#solo:checked { background: ${solo}; color: ${solo_text}; }
+QPushButton#bar { font-size: ${p14}; border: none; border-radius: ${p8}; padding: ${p4} ${p10}; }
 QPushButton#bar:hover { background: ${raised}; }
 QPushButton#bar:checked { background: ${accent}; color: ${on_accent}; }
-QCheckBox::indicator { width: ${p14}; height: ${p14}; border: 1px solid ${check_border};
-                       background: ${input}; border-radius: ${p2}; }
+QPushButton#preset { font-size: ${p12}; font-weight: 600; background: ${raised};
+                     border-radius: ${p8}; padding: ${p5} ${p12}; }
+QPushButton#preset:hover { background: ${raised_hover}; }
+QCheckBox { spacing: ${p8}; }
+QCheckBox::indicator { width: ${p16}; height: ${p16}; border: 1px solid ${check_border};
+                       background: ${input}; border-radius: ${p4}; }
 QCheckBox::indicator:checked { background: ${accent}; border-color: ${accent}; }
-QTabWidget::pane { border: 1px solid ${border}; }
-QTabBar::tab { padding: ${p6} ${p14}; background: ${panel}; }
+QTabWidget::pane { border: 1px solid ${border}; border-radius: ${p8}; top: -1px; }
+QTabBar::tab { padding: ${p6} ${p14}; background: transparent; color: ${muted};
+               border-radius: ${p6}; margin: ${p2}; }
+QTabBar::tab:hover { background: ${raised}; color: ${text}; }
 QTabBar::tab:selected { background: ${accent}; color: ${on_accent}; }
 QFrame#dropLine { background: ${accent}; border: none; }
 """
@@ -959,7 +996,7 @@ class Bridge(QObject):
 
 
 APP_ID = "audiomixer-single-instance"
-APP_VERSION = "0.4.3"
+APP_VERSION = "0.5.0"
 # "utente/repository" su GitHub: con le release pubblicate li', il mixer avvisa delle versioni nuove
 UPDATE_REPO = ""
 
@@ -1053,9 +1090,9 @@ def confirm(parent, title, text, ok_text=None):
 
 
 def wrap_name(name):
-    """Maiuscolo, con a capo possibile anche dentro i nomi molto lunghi."""
-    return " ".join("\u200b".join(w) if len(w) > 9 else w
-                    for w in name.upper().split(" "))
+    """Iniziale maiuscola, con a capo possibile anche dentro i nomi molto lunghi."""
+    name = name[:1].upper() + name[1:]
+    return " ".join("\u200b".join(w) if len(w) > 12 else w for w in name.split(" "))
 
 
 def app_exe(sessions):
@@ -1127,8 +1164,8 @@ class Meter(QWidget):
     """Meter stereo in stile OBS: due barre (sinistra e destra) con zone colorate
     attenuate sullo sfondo, livello acceso sopra, peak hold e scala in dB."""
 
-    BAR_W = 5
-    GAP = 1
+    BAR_W = 6
+    GAP = 3
     ZONES = [(-60, -20, "#1d5e2b", "#2fbf4a"),
              (-20, -9, "#6e5d12", "#e0b422"),
              (-9, 0, "#6e1f1c", "#d8342f")]
@@ -1141,7 +1178,8 @@ class Meter(QWidget):
         self.hold_ticks = [0, 0]
 
     def apply_scale(self):
-        self.BAR_W = sc(5)
+        self.BAR_W = sc(6)
+        self.GAP = sc(3)
         self.setFixedWidth(sc(38))
         self.setMinimumHeight(sc(80))
         self.update()
@@ -1159,40 +1197,48 @@ class Meter(QWidget):
         self.update()
 
     def paintEvent(self, _):
+        """Due barre arrotondate: binario scuro, livello con sfumatura verde-giallo-rosso,
+        tacca del picco, e una scala in dB leggera accanto."""
         p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
         w, h = self.width(), self.height()
         m = sc(7)
-        dims = (PALETTE["dim_g"], PALETTE["dim_y"], PALETTE["dim_r"])
         span = max(1, h - 2 * m)
         bars_w = 2 * self.BAR_W + self.GAP
+        r = self.BAR_W / 2
 
         def y(db):
             return m + (-max(-60.0, min(0.0, db))) / 60 * span
 
+        grad = QLinearGradient(0, y(-60), 0, y(0))
+        for db, col in ((-60, "#16a34a"), (-24, "#22c55e"), (-14, "#eab308"),
+                        (-6, "#f97316"), (0, "#ef4444")):
+            grad.setColorAt((db + 60) / 60, QColor(col))
+        p.setPen(Qt.NoPen)
         for i in range(2):
             x = i * (self.BAR_W + self.GAP)
-            for zi, (lo, hi, _dim, bright) in enumerate(self.ZONES):
-                y_lo, y_hi = y(lo), y(hi)
-                p.fillRect(QRectF(x, y_hi, self.BAR_W, y_lo - y_hi), QColor(dims[zi]))
-                t = max(y(self.db[i]), y_hi)
-                if t < y_lo:
-                    p.fillRect(QRectF(x, t, self.BAR_W, y_lo - t), QColor(bright))
+            track = QPainterPath()
+            track.addRoundedRect(QRectF(x, y(0), self.BAR_W, span), r, r)
+            p.fillPath(track, QColor(PALETTE["meter_track"]))
+            top = y(self.db[i])
+            if top < y(-60) - 0.5:
+                p.save()
+                p.setClipPath(track)
+                p.fillRect(QRectF(x, top, self.BAR_W, y(-60) - top), grad)
+                p.restore()
             if self.hold[i] > -60:
                 # un picco sopra 0 dB (audio che satura) resta rosso
                 col = next((b for lo, hi, d, b in self.ZONES if self.hold[i] <= hi), self.ZONES[-1][3])
-                p.setPen(QPen(QColor(col), 2))
-                yh = int(y(self.hold[i]))
-                p.drawLine(x, yh, x + self.BAR_W, yh)
+                p.fillRect(QRectF(x, y(self.hold[i]) - 1, self.BAR_W, 2), QColor(col))
 
-        step = 5 if span / 12 >= sc(13) else 10
+        step = 10 if span / 6 >= sc(14) else 20
         f = p.font()
         f.setPixelSize(sc(9))
         p.setFont(f)
         p.setPen(QColor(PALETTE["meter_text"]))
         for db in range(0, -61, -step):
             yy = y(db)
-            p.drawLine(bars_w, int(yy), bars_w + sc(3), int(yy))
-            p.drawText(QRectF(bars_w + sc(5), yy - sc(6), w - bars_w - sc(5), sc(12)),
+            p.drawText(QRectF(bars_w + sc(4), yy - sc(6), w - bars_w - sc(4), sc(12)),
                        Qt.AlignVCenter | Qt.AlignLeft, str(db))
 
 
@@ -1549,7 +1595,23 @@ def limit_pct(info):
     return 100
 
 
-class LimitSlider(QSlider):
+class ValueSlider(QSlider):
+    """Slider con un'etichetta "72%" che segue il valore, anche quando il valore cambia da
+    codice con i segnali bloccati (sincronizzazione con Windows)."""
+
+    def __init__(self, orientation):
+        super().__init__(orientation)
+        self.value_label = QLabel("0%")
+        self.value_label.setObjectName("value")
+        self.value_label.setAlignment(Qt.AlignCenter)
+
+    def sliderChange(self, change):
+        super().sliderChange(change)
+        if change == QSlider.SliderValueChange:
+            self.value_label.setText(f"{self.value()}%")
+
+
+class LimitSlider(ValueSlider):
     """Slider del volume con il segno del limite massimo: una linea sul valore limite."""
 
     def __init__(self, orientation):
@@ -1615,6 +1677,7 @@ class Strip(QFrame):
         self.slider.setRange(0, 100)
         self.slider.valueChanged.connect(self.on_volume)
         self.mute = QPushButton("🔊")
+        self.mute.setObjectName("mute")
         self.mute.setCheckable(True)
         self.mute.toggled.connect(self.on_mute)
         self.solo = QPushButton("S")
@@ -1632,9 +1695,12 @@ class Strip(QFrame):
         body.addWidget(self.meter)
         body.addWidget(self.slider)
         lay = QVBoxLayout(self)
+        lay.setContentsMargins(sc(8), sc(10), sc(8), sc(8))
+        lay.setSpacing(sc(6))
         lay.addWidget(self.icon_label)
         lay.addWidget(self.label)
         lay.addLayout(body, 1)
+        lay.addWidget(self.slider.value_label)
         buttons = QHBoxLayout()
         buttons.addWidget(self.mute)
         buttons.addWidget(self.solo)
@@ -2163,10 +2229,11 @@ class SystemStrip(QFrame):
         self.label.setToolTip(tr("Notifiche e avvisi di Windows.\n"
                                  "Il canale si attiva dopo il primo suono di sistema."))
         self.meter = Meter()
-        self.slider = QSlider(Qt.Vertical)
+        self.slider = ValueSlider(Qt.Vertical)
         self.slider.setRange(0, 100)
         self.slider.valueChanged.connect(self.on_volume)
         self.mute = QPushButton("\U0001F50A")
+        self.mute.setObjectName("mute")
         self.mute.setCheckable(True)
         self.mute.toggled.connect(self.on_mute)
 
@@ -2177,6 +2244,7 @@ class SystemStrip(QFrame):
         lay.addWidget(self.icon)
         lay.addWidget(self.label)
         lay.addLayout(body, 1)
+        lay.addWidget(self.slider.value_label)
         lay.addWidget(self.mute)
         self._spacer = QSpacerItem(0, 30, QSizePolicy.Minimum, QSizePolicy.Fixed)
         lay.addItem(self._spacer)
@@ -2620,12 +2688,13 @@ class BusStrip(QFrame):
         self.label.setAlignment(Qt.AlignCenter)
         self.label.setWordWrap(True)
         self.meter = Meter()
-        self.slider = QSlider(Qt.Vertical)
+        self.slider = ValueSlider(Qt.Vertical)
         self.slider.setRange(0, 100)
         self.slider.setValue(round(bus["gain"] * 100))
         self.slider.sliderPressed.connect(self.capture)
         self.slider.valueChanged.connect(self.on_volume)
         self.mute = QPushButton("\U0001F50A")
+        self.mute.setObjectName("mute")
         self.mute.setCheckable(True)
         self.mute.toggled.connect(self.on_mute)
         body = QHBoxLayout()
@@ -2635,6 +2704,7 @@ class BusStrip(QFrame):
         lay.addWidget(self.icon)
         lay.addWidget(self.label)
         lay.addLayout(body, 1)
+        lay.addWidget(self.slider.value_label)
         lay.addWidget(self.mute)
         self._spacer = QSpacerItem(0, 30, QSizePolicy.Minimum, QSizePolicy.Fixed)
         lay.addItem(self._spacer)
@@ -2746,10 +2816,11 @@ class MasterStrip(QFrame):
         self.label.setAlignment(Qt.AlignCenter)
         self.label.setWordWrap(True)
         self.meter = Meter()
-        self.slider = QSlider(Qt.Vertical)
+        self.slider = ValueSlider(Qt.Vertical)
         self.slider.setRange(0, 100)
         self.slider.valueChanged.connect(self.on_volume)
         self.mute = QPushButton("\U0001F50A")
+        self.mute.setObjectName("mute")
         self.mute.setCheckable(True)
         self.mute.toggled.connect(self.on_mute)
 
@@ -2760,6 +2831,7 @@ class MasterStrip(QFrame):
         lay.addWidget(self.icon)
         lay.addWidget(self.label)
         lay.addLayout(body, 1)
+        lay.addWidget(self.slider.value_label)
         lay.addWidget(self.mute)
         self._spacer = QSpacerItem(0, 30, QSizePolicy.Minimum, QSizePolicy.Fixed)
         lay.addItem(self._spacer)
@@ -2903,7 +2975,7 @@ class SourceRow(QFrame):
         self.on_delete = on_delete
         self.active = True
         self.default = False
-        self._title = (title or name).upper()
+        self._title = (title or name)[:1].upper() + (title or name)[1:]
 
         self.icon = QLabel()
         self.icon.setAlignment(Qt.AlignCenter)
@@ -2935,7 +3007,7 @@ class SourceRow(QFrame):
         self.label._elide()
 
     def set_title(self, text):
-        self._title = text.upper()
+        self._title = text[:1].upper() + text[1:]
         self.label.setFullText(self._title + ("  \u2605" if self.default else ""))
 
     def set_default(self, default):
@@ -3165,6 +3237,7 @@ class SettingsDialog(QDialog):
         tabs.addTab(self._automation_tab(mixer), tr("Automazione"))
         tabs.setCurrentIndex(tab)
         close = QPushButton(tr("Chiudi"))
+        close.setDefault(True)
         close.clicked.connect(self.accept)
         buttons = QHBoxLayout()
         buttons.addStretch(1)
@@ -4001,6 +4074,7 @@ class PresetsDialog(QDialog):
         import_btn.setToolTip(tr("Aggiunge preset, regole e ducking da un file esportato"))
         import_btn.clicked.connect(mixer.import_profile)
         close = QPushButton(tr("Chiudi"))
+        close.setDefault(True)
         close.clicked.connect(self.accept)
         buttons = QHBoxLayout()
         buttons.addWidget(new_btn)
@@ -4540,18 +4614,26 @@ class Mixer(QWidget):
         self.settings_btn.setToolTip(tr("Impostazioni"))
         self.settings_btn.clicked.connect(lambda: self.open_settings())
         self.preset_btn = QPushButton(tr("Preset") + " \u25be")
-        self.preset_btn.setObjectName("bar")
+        self.preset_btn.setObjectName("preset")
         self.preset_btn.setToolTip(tr("Preset: salva e applica volumi, mute, uscite e fonti visibili"))
         self.preset_btn.clicked.connect(self.show_preset_menu)
         bar = QHBoxLayout()
+        bar.setSpacing(sc(6))
+        logo = QLabel()
+        logo.setPixmap(QIcon(resource_path("icon.ico")).pixmap(sc(22), sc(22)))
+        title = QLabel("AudioMixer")
+        title.setObjectName("appTitle")
+        bar.addWidget(logo)
+        bar.addWidget(title)
+        bar.addSpacing(sc(10))
         bar.addWidget(self.preset_btn)
         bar.addStretch(1)
         bar.addWidget(self.pin_btn)
         bar.addWidget(self.settings_btn)
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(6, 6, 6, 6)
-        root.setSpacing(4)
+        root.setContentsMargins(sc(12), sc(10), sc(12), sc(12))
+        root.setSpacing(sc(10))
         root.addLayout(bar)
         root.addLayout(body, 1)
         self.apply_panel()
