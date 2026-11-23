@@ -1144,7 +1144,7 @@ class Bridge(QObject):
 
 
 APP_ID = "audiomixer-single-instance"
-APP_VERSION = "0.5.1"
+APP_VERSION = "0.5.2"
 # "utente/repository" su GitHub: con le release pubblicate li', il mixer avvisa delle versioni nuove
 UPDATE_REPO = ""
 
@@ -3284,7 +3284,7 @@ class SettingsDialog(QDialog):
         plug_row.addWidget(plug_dir)
         gl.addLayout(plug_row)
         guide = QPushButton(tr("Guida rapida"))
-        guide.clicked.connect(mixer.show_tutorial)
+        guide.clicked.connect(lambda: (self.accept(), QTimer.singleShot(0, mixer.show_tutorial)))
         gl.addWidget(guide, 0, Qt.AlignLeft)
 
         fade_row = QHBoxLayout()
@@ -4587,6 +4587,142 @@ class AudioGuard:
         save_ducking(self.host.ducking)
 
 
+class TourOverlay(QWidget):
+    """Tour guidato sopra la finestra: oscura tutto tranne la parte che spiega, e mette accanto
+    un fumetto con il testo e i pulsanti Salta / Avanti. Invio = avanti, Esc = salta."""
+    finished = Signal()
+
+    def __init__(self, host, steps):
+        super().__init__(host)
+        self.host = host
+        self.steps = [s for s in steps if s[0] == "center" or (s[0] is not None and s[0].isVisible())]
+        self.index = 0
+        self.hole = None
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.bubble = QFrame(self)
+        self.bubble.setObjectName("tourBubble")
+        self.bubble.setStyleSheet(
+            f"QFrame#tourBubble {{ background: {PALETTE['panel']}; border: 2px solid "
+            f"{PALETTE['accent']}; border-radius: {sc(12)}px; }}"
+            f"QFrame#tourBubble QLabel {{ background: transparent; border: none; }}"
+            f"QPushButton#tourNext {{ background: {PALETTE['accent']}; color: {PALETTE['on_accent']};"
+            f" border-radius: {sc(8)}px; padding: {sc(6)}px {sc(16)}px; font-size: {sc(12)}px;"
+            f" font-weight: 600; }}"
+            f"QPushButton#tourSkip {{ color: {PALETTE['muted']}; font-size: {sc(12)}px;"
+            f" padding: {sc(6)}px {sc(8)}px; }}")
+        self.bubble.setFixedWidth(sc(300))
+        self.title = QLabel()
+        self.title.setStyleSheet(f"font-size: {sc(14)}px; font-weight: 700; color: {PALETTE['strong']};")
+        self.text = QLabel()
+        self.text.setWordWrap(True)
+        self.text.setStyleSheet(f"font-size: {sc(12)}px; color: {PALETTE['text']};")
+        self.counter = QLabel()
+        self.counter.setStyleSheet(f"font-size: {sc(11)}px; color: {PALETTE['muted']};")
+        self.skip_btn = QPushButton()
+        self.skip_btn.setObjectName("tourSkip")
+        self.skip_btn.clicked.connect(self.close_tour)
+        self.next_btn = QPushButton()
+        self.next_btn.setObjectName("tourNext")
+        self.next_btn.clicked.connect(self.next_step)
+        buttons = QHBoxLayout()
+        buttons.addWidget(self.counter)
+        buttons.addStretch(1)
+        buttons.addWidget(self.skip_btn)
+        buttons.addWidget(self.next_btn)
+        lay = QVBoxLayout(self.bubble)
+        lay.setContentsMargins(sc(16), sc(14), sc(16), sc(12))
+        lay.setSpacing(sc(8))
+        lay.addWidget(self.title)
+        lay.addWidget(self.text)
+        lay.addLayout(buttons)
+
+    def start(self):
+        self.setGeometry(self.host.rect())
+        self.show()
+        self.raise_()
+        self.setFocus()
+        self.show_step()
+
+    def show_step(self):
+        target, title, text = self.steps[self.index]
+        last = self.index == len(self.steps) - 1
+        self.title.setText(title)
+        self.text.setText(text)
+        self.counter.setText(f"{self.index + 1}/{len(self.steps)}")
+        self.skip_btn.setText(tr("Salta il tour") if self.index == 0 else tr("Salta"))
+        self.skip_btn.setVisible(not last)
+        self.next_btn.setText(tr("Inizia") if self.index == 0 and len(self.steps) > 1
+                              else tr("Fine") if last else tr("OK"))
+        self.reposition()
+
+    def reposition(self):
+        """Buco attorno al widget spiegato e fumetto accanto: sotto, sopra, a destra o a
+        sinistra, dove c'e' posto; senza widget, al centro."""
+        self.setGeometry(self.host.rect())
+        self.bubble.adjustSize()
+        bw, bh = self.bubble.width(), self.bubble.height()
+        target = self.steps[self.index][0]
+        gap = sc(12)
+        if target == "center" or not target.isVisible():
+            self.hole = None
+            x, y = (self.width() - bw) // 2, (self.height() - bh) // 2
+        else:
+            top_left = target.mapTo(self.host, QPoint(0, 0))
+            r = QRectF(top_left.x(), top_left.y(), target.width(), target.height())
+            r = r.adjusted(-sc(6), -sc(6), sc(6), sc(6)).intersected(QRectF(self.rect()))
+            self.hole = r
+            if r.bottom() + gap + bh <= self.height():
+                x, y = r.center().x() - bw / 2, r.bottom() + gap
+            elif r.top() - gap - bh >= 0:
+                x, y = r.center().x() - bw / 2, r.top() - gap - bh
+            elif r.right() + gap + bw <= self.width():
+                x, y = r.right() + gap, r.center().y() - bh / 2
+            else:
+                x, y = r.left() - gap - bw, r.center().y() - bh / 2
+        x = max(sc(8), min(self.width() - bw - sc(8), int(x)))
+        y = max(sc(8), min(self.height() - bh - sc(8), int(y)))
+        self.bubble.move(x, y)
+        self.update()
+
+    def paintEvent(self, _):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        shade = QPainterPath()
+        shade.addRect(QRectF(self.rect()))
+        if self.hole is not None:
+            hole = QPainterPath()
+            hole.addRoundedRect(self.hole, sc(10), sc(10))
+            shade = shade.subtracted(hole)
+        p.fillPath(shade, QColor(0, 0, 0, 160))
+        if self.hole is not None:
+            p.setPen(QPen(QColor(PALETTE["accent"]), 2))
+            p.drawRoundedRect(self.hole, sc(10), sc(10))
+
+    def mousePressEvent(self, e):
+        e.accept()  # durante il tour il resto della finestra non si tocca
+
+    def keyPressEvent(self, e):
+        if e.key() == Qt.Key_Escape:
+            self.close_tour()
+        elif e.key() in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Right, Qt.Key_Space):
+            self.next_step()
+        elif e.key() == Qt.Key_Left and self.index > 0:
+            self.index -= 1
+            self.show_step()
+
+    def next_step(self):
+        if self.index >= len(self.steps) - 1:
+            self.close_tour()
+            return
+        self.index += 1
+        self.show_step()
+
+    def close_tour(self):
+        self.hide()
+        self.deleteLater()
+        self.finished.emit()
+
+
 class Mixer(QWidget):
     def __init__(self):
         super().__init__()
@@ -4664,6 +4800,7 @@ class Mixer(QWidget):
         self.solo_set = set()
         self.solo_prev = load_solo_recovery()
         self._settings_dlg = None
+        self._tour = None
         self.solo_applied = {}
         self._quitting = False
         self._closed = False
@@ -5315,23 +5452,70 @@ class Mixer(QWidget):
             QTimer.singleShot(400, self.show_tutorial)
 
     def show_tutorial(self):
-        """Guida rapida: al primo avvio e dal pulsante nelle Impostazioni."""
-        steps = [
-            tr("Benvenuto in AudioMixer!"),
-            tr("1. A sinistra c'è l'elenco Fonti: clicca l'occhio di un'app per mostrarla nel "
-               "mixer. Il campo Cerca filtra l'elenco."),
-            tr("2. Ogni striscia ha volume, mute (🔊), solo (S) e un tasto rapido (⌨)."),
-            tr("3. Tasto destro su una striscia: uscita audio, limite di volume, gruppo, colore, "
-               "icona, larghezza e controllo MIDI."),
-            tr("4. Preset (in alto a sinistra): salva e richiama volumi, mute e uscite. "
-               "Da Gestisci preset puoi esportarli e importarli."),
-            tr("5. ⚙ Impostazioni: ducking, limiti, automazioni, dissolvenza, volume di sicurezza, "
-               "mute delle pubblicità."),
+        """Tour guidato: al primo avvio e dal pulsante Guida rapida nelle Impostazioni."""
+        if self._tour is not None:
+            return
+        if not self._panel_open:
+            self.toggle_panel()
+        self.set_devices_open(False)
+        self.bring_to_front()
+        self._tour = TourOverlay(self, self.tour_steps())
+        self._tour.finished.connect(self._tour_done)
+        self._tour.start()
+
+    def _tour_done(self):
+        self._tour = None
+
+    def tour_steps(self):
+        """Passi del tour: (widget da evidenziare o "center", titolo, testo). Quelli su widget non
+        visibili (nessuna app nel mixer, nessun gruppo...) vengono saltati."""
+        strip = next((self.strips[n] for n in self.ordered_names()
+                      if n in self.strips and self.strips[n].isVisible()
+                      and not isinstance(self.strips[n], DeviceStrip)), None)
+        bus = next(iter(self.bus_strips.values()), None)
+        return [
+            ("center", tr("Benvenuto in AudioMixer!"),
+             tr("Un giro veloce per scoprire dove sta tutto. Dura un minuto: puoi saltarlo "
+                "adesso e rivederlo quando vuoi da Impostazioni → Guida rapida.")),
+            (self.fonti, tr("Le tue fonti"),
+             tr("Qui ci sono tutte le app che hanno riprodotto audio. Clicca l'occhio di un'app "
+                "per mostrarla nel mixer, trascina le righe per cambiare l'ordine.")),
+            (self.search, tr("Cerca"),
+             tr("Scrivi una parte del nome per trovare subito un'app quando l'elenco è lungo.")),
+            (self.dev_btn, tr("Dispositivi"),
+             tr("Questa scheda elenca cuffie, casse e microfoni: anche loro possono avere una "
+                "striscia nel mixer.")),
+            (strip, tr("Una striscia"),
+             tr("Ogni app ha la sua: il meter mostra quanto suona, il fader regola il volume e "
+                "sotto c'è la percentuale.")),
+            (strip.mute if strip else None, tr("Mute e solo"),
+             tr("🔊 muta e smuta l'app (con una dissolvenza). S la mette in solo: tutte le altre "
+                "vengono mutate finché non lo togli.")),
+            (strip.key_btn if strip else None, tr("Tasto rapido"),
+             tr("Clicca e premi un tasto o una combinazione: da lì in poi muta e smuta l'app "
+                "anche mentre giochi o usi altri programmi.")),
+            (strip, tr("Tasto destro"),
+             tr("Col tasto destro su una striscia scegli l'uscita audio dell'app, un limite di "
+                "volume, il gruppo, colore, icona e larghezza, e un controllo MIDI.")),
+            (bus, tr("Gruppi"),
+             tr("Il fader di un gruppo muove insieme tutte le sue app, mantenendo i rapporti "
+                "tra i volumi.")),
+            (self.system, tr("Suoni di sistema"),
+             tr("Notifiche e avvisi di Windows hanno un canale tutto loro.")),
+            (self.master, tr("Audio PC"),
+             tr("Il volume generale del dispositivo di uscita di Windows. Tasto destro su "
+                "un'uscita nel mixer per duplicarne l'audio su un'altra.")),
+            (self.preset_btn, tr("Preset"),
+             tr("Salva lo stato attuale (volumi, mute, uscite, fonti visibili) e richiamalo con "
+                "un clic o un tasto. Da Gestisci preset puoi anche esportarli.")),
+            (self.pin_btn, tr("Sempre in primo piano"),
+             tr("Tiene il mixer sopra le altre finestre.")),
+            (self.settings_btn, tr("Impostazioni"),
+             tr("Temi, ducking, limiti, automazioni, dissolvenza, volume di sicurezza, mute "
+                "delle pubblicità, plugin e avvio con Windows.")),
+            ("center", tr("Tutto qui!"),
+             tr("Buon ascolto. Il tour è sempre in Impostazioni → Guida rapida.")),
         ]
-        box = QMessageBox(QMessageBox.Information, tr("Guida rapida"), "\n\n".join(steps),
-                          QMessageBox.Ok, self)
-        box.setWindowFlag(Qt.WindowStaysOnTopHint, True)
-        box.exec()
 
     def toggle_panel(self):
         self._panel_open = not self._panel_open
@@ -5368,6 +5552,8 @@ class Mixer(QWidget):
     def resizeEvent(self, e):
         super().resizeEvent(e)
         self._save_timer.start()
+        if self._tour is not None:
+            self._tour.reposition()
 
     def closeEvent(self, e):
         saving = False
