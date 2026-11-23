@@ -26,7 +26,8 @@ if not getattr(sys, "frozen", False) and os.path.isdir(_site) and _site not in s
 import keyboard
 import psutil
 from PySide6.QtCore import (Qt, QTimer, QRectF, QFileInfo, QObject, Signal, QByteArray, QPointF,
-                            QPoint, QMimeData, QLocale, QTranslator, QLibraryInfo, QTime, QUrl)
+                            QPoint, QMimeData, QLocale, QTranslator, QLibraryInfo, QTime, QUrl,
+                            QPropertyAnimation)
 from PySide6.QtGui import (QPainter, QColor, QPen, QIcon, QGuiApplication,
                            QDrag, QCursor, QPixmap, QImage, QPolygonF, QDesktopServices,
                            QLinearGradient, QPainterPath)
@@ -733,6 +734,7 @@ DEFAULT_SETTINGS = {
     "plugins": False,
     "tutorial_done": False,
     "strip_width": 104,
+    "osd": True,
 }
 
 
@@ -1208,7 +1210,7 @@ class Bridge(QObject):
 
 
 APP_ID = "audiomixer-single-instance"
-APP_VERSION = "0.5.5"
+APP_VERSION = "0.5.6"
 # "utente/repository" su GitHub: con le release pubblicate li', il mixer avvisa delle versioni nuove
 UPDATE_REPO = ""
 
@@ -3374,6 +3376,9 @@ class SettingsDialog(QDialog):
             (tr("Finestra"), None, [
                 (tr("Sempre in primo piano"), tr("Il mixer resta sopra le altre finestre."),
                  self._option("always_on_top")),
+                (tr("Avviso a schermo"),
+                 tr("Quando usi un tasto rapido col mixer nascosto, un piccolo riquadro mostra "
+                    "cosa è cambiato (mute, preset, uscita)."), self._option("osd")),
                 (tr("Lingua"), None, self.lang_box),
             ]),
             (tr("Aiuto"), None, [
@@ -4807,6 +4812,46 @@ class AudioGuard:
         save_ducking(self.host.ducking)
 
 
+class Osd(QWidget):
+    """Avviso a schermo: un riquadro che compare per un attimo in basso al centro quando un tasto
+    rapido (o il MIDI) cambia qualcosa mentre il mixer non e' in primo piano. Non prende il
+    focus e non riceve clic: il gioco o il programma in uso non se ne accorge.
+    Nei giochi a schermo intero esclusivo Windows non mostra finestre sopra: serve il
+    "finestra senza bordi"."""
+
+    def __init__(self):
+        super().__init__(None, Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+                         | Qt.WindowTransparentForInput | Qt.WindowDoesNotAcceptFocus)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WA_ShowWithoutActivating)
+        self.box = QLabel(self)
+        self._hide = QTimer(self, singleShot=True, interval=1300, timeout=self._fade)
+        self._anim = QPropertyAnimation(self, b"windowOpacity", self)
+        self._anim.setDuration(250)
+        self._anim.finished.connect(lambda: self.hide() if self.windowOpacity() < 0.05 else None)
+
+    def show_message(self, icon, text):
+        self.box.setStyleSheet(
+            f"background: {PALETTE['panel']}; color: {PALETTE['strong']}; "
+            f"border: 1px solid {PALETTE['accent']}; border-radius: {sc(14)}px; "
+            f"padding: {sc(12)}px {sc(22)}px; font-size: {sc(15)}px; font-weight: 600;")
+        self.box.setText(f"{icon}   {text}")
+        self.box.adjustSize()
+        self.resize(self.box.size())
+        area = QGuiApplication.primaryScreen().availableGeometry()
+        self.move(area.center().x() - self.width() // 2, area.bottom() - self.height() - sc(80))
+        self._anim.stop()
+        self.setWindowOpacity(0.96)
+        self.show()
+        self.raise_()
+        self._hide.start()
+
+    def _fade(self):
+        self._anim.setStartValue(self.windowOpacity())
+        self._anim.setEndValue(0.0)
+        self._anim.start()
+
+
 class TourOverlay(QWidget):
     """Tour guidato sopra la finestra: oscura tutto tranne la parte che spiega, e mette accanto
     un fumetto con il testo e i pulsanti Salta / Avanti. Invio = avanti, Esc = salta."""
@@ -5031,7 +5076,8 @@ class Mixer(QWidget):
         self.bridge.pressed.connect(self.toggle_mute)
         self.bridge.recorded.connect(self.apply_binding)
         self.bridge.call_main.connect(lambda fn: fn())
-        self.bridge.preset_pressed.connect(self.apply_preset)
+        self.bridge.preset_pressed.connect(self.on_preset_key)
+        self.osd = Osd()
         self.bridge.preset_recorded.connect(self.apply_preset_binding)
         self.bridge.quick_pressed.connect(self.cycle_quick_device)
         self.bridge.quick_recorded.connect(self.apply_quick_binding)
@@ -6236,6 +6282,7 @@ class Mixer(QWidget):
         strip = self.strips.get(name)
         if strip is not None and strip.isEnabled():
             strip.slider.setValue(round(value * 100 / 127))
+            self.notify("\U0001F39A", f"{self.display_name(name)}: {strip.slider.value()}%")
             return
         sessions = self.groups.get(name, [])
         cancel_fade(sessions)
@@ -6584,10 +6631,12 @@ class Mixer(QWidget):
         if name == SYSTEM_NAME:
             if self.system.sessions:
                 self.system.mute.toggle()
+                self.notify_mute(tr("Suoni di sistema"), self.system.mute.isChecked())
             return
         strip = self.strips.get(name)
         if strip and strip.sessions:
             strip.mute.toggle()
+            self.notify_mute(self.display_name(name), strip.mute.isChecked())
             return
         sessions = self.groups.get(name, [])
         if not sessions:
@@ -6597,6 +6646,21 @@ class Mixer(QWidget):
         except Exception:
             return
         fade_mute(sessions, new, name)
+        self.notify_mute(self.display_name(name), new)
+
+    def notify(self, icon, text):
+        """Avviso a schermo, solo se il mixer non e' la finestra in uso (li' si vede gia')."""
+        if self.settings.get("osd", True) and not self.isActiveWindow():
+            self.osd.show_message(icon, text)
+
+    def notify_mute(self, name, muted):
+        self.notify("\U0001F507" if muted else "\U0001F50A",
+                    tr("{name}: muto", name=name) if muted else tr("{name}: audio attivo", name=name))
+
+    def on_preset_key(self, name):
+        self.apply_preset(name)
+        if name in self.presets:
+            self.notify("\U0001F39B", tr("Preset: {name}", name=name))
 
     def start_bind(self, name):
         if self.recording:
@@ -7334,6 +7398,7 @@ class Mixer(QWidget):
                 sess.SimpleAudioVolume.SetMasterVolume(want, None)
             except Exception:
                 pass
+        self.notify("\U0001F3A7", self.display_name(device_id))
         self.rebuild_tray_menu()
         self.refresh()
 

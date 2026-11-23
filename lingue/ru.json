@@ -324,6 +324,10 @@
     "Ducking in azione": "Ducking работает",
     "Ducking pronto": "Ducking готов",
     "{n} app con audio": "приложений со звуком: {n}",
-    "{n} nel mixer": "в микшере: {n}"
+    "{n} nel mixer": "в микшере: {n}",
+    "{name}: muto": "{name}: звук выключен",
+    "{name}: audio attivo": "{name}: звук включён",
+    "Avviso a schermo": "Уведомление на экране",
+    "Quando usi un tasto rapido col mixer nascosto, un piccolo riquadro mostra cosa è cambiato (mute, preset, uscita).": "Когда вы нажимаете горячую клавишу при скрытом микшере, маленькое окно показывает, что изменилось (звук, пресет, выход)."
   }
 }

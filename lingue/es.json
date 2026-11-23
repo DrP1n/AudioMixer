@@ -324,6 +324,10 @@
     "Ducking in azione": "Ducking en acción",
     "Ducking pronto": "Ducking listo",
     "{n} app con audio": "{n} apps con audio",
-    "{n} nel mixer": "{n} en el mezclador"
+    "{n} nel mixer": "{n} en el mezclador",
+    "{name}: muto": "{name}: silenciado",
+    "{name}: audio attivo": "{name}: sonido activado",
+    "Avviso a schermo": "Aviso en pantalla",
+    "Quando usi un tasto rapido col mixer nascosto, un piccolo riquadro mostra cosa è cambiato (mute, preset, uscita).": "Cuando usas una tecla rápida con el mezclador oculto, un pequeño recuadro muestra qué ha cambiado (silencio, preset, salida)."
   }
 }
