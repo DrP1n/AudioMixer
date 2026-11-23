@@ -328,6 +328,16 @@
     "{name}: muto": "{name}: muted",
     "{name}: audio attivo": "{name}: sound on",
     "Avviso a schermo": "On-screen notice",
-    "Quando usi un tasto rapido col mixer nascosto, un piccolo riquadro mostra cosa è cambiato (mute, preset, uscita).": "When you use a hotkey with the mixer hidden, a small box shows what changed (mute, preset, output)."
+    "Quando usi un tasto rapido col mixer nascosto, un piccolo riquadro mostra cosa è cambiato (mute, preset, uscita).": "When you use a hotkey with the mixer hidden, a small box shows what changed (mute, preset, output).",
+    "Mostra da sole le app nuove": "Show new apps automatically",
+    "Un'app che riproduce audio per la prima volta compare subito nel mixer, senza cliccare l'occhio.": "An app that plays audio for the first time appears in the mixer right away, without clicking the eye.",
+    "Nascondi le app chiuse": "Hide closed apps",
+    "Le strisce delle app che non stanno suonando spariscono e tornano quando l'app riparte.": "Strips of apps that aren't playing disappear and come back when the app starts again.",
+    "Volume +": "Volume +",
+    "Volume −": "Volume −",
+    "Premi il tasto o la combinazione per «{what}» di «{name}».\nEsc = togli il tasto.": "Press the key or combination for “{what}” of “{name}”.\nEsc = remove the key.",
+    "Il tasto {key} è già assegnato a un'altra funzione.": "The key {key} is already assigned to another function.",
+    "Tasti volume": "Volume keys",
+    "microfono mutato": "microphone muted"
   }
 }

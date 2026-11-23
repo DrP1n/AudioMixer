@@ -328,6 +328,16 @@
     "{name}: muto": "{name}: silenciado",
     "{name}: audio attivo": "{name}: sonido activado",
     "Avviso a schermo": "Aviso en pantalla",
-    "Quando usi un tasto rapido col mixer nascosto, un piccolo riquadro mostra cosa è cambiato (mute, preset, uscita).": "Cuando usas una tecla rápida con el mezclador oculto, un pequeño recuadro muestra qué ha cambiado (silencio, preset, salida)."
+    "Quando usi un tasto rapido col mixer nascosto, un piccolo riquadro mostra cosa è cambiato (mute, preset, uscita).": "Cuando usas una tecla rápida con el mezclador oculto, un pequeño recuadro muestra qué ha cambiado (silencio, preset, salida).",
+    "Mostra da sole le app nuove": "Mostrar las apps nuevas automáticamente",
+    "Un'app che riproduce audio per la prima volta compare subito nel mixer, senza cliccare l'occhio.": "Una app que reproduce audio por primera vez aparece enseguida en el mezclador, sin hacer clic en el ojo.",
+    "Nascondi le app chiuse": "Ocultar las apps cerradas",
+    "Le strisce delle app che non stanno suonando spariscono e tornano quando l'app riparte.": "Los canales de las apps que no suenan desaparecen y vuelven cuando la app arranca de nuevo.",
+    "Volume +": "Volumen +",
+    "Volume −": "Volumen −",
+    "Premi il tasto o la combinazione per «{what}» di «{name}».\nEsc = togli il tasto.": "Pulsa la tecla o combinación para «{what}» de «{name}».\nEsc = quitar la tecla.",
+    "Il tasto {key} è già assegnato a un'altra funzione.": "La tecla {key} ya está asignada a otra función.",
+    "Tasti volume": "Teclas de volumen",
+    "microfono mutato": "micrófono silenciado"
   }
 }

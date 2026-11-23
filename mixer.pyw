@@ -735,6 +735,8 @@ DEFAULT_SETTINGS = {
     "tutorial_done": False,
     "strip_width": 104,
     "osd": True,
+    "auto_show": False,
+    "hide_idle": False,
 }
 
 
@@ -1210,7 +1212,7 @@ class Bridge(QObject):
 
 
 APP_ID = "audiomixer-single-instance"
-APP_VERSION = "0.5.6"
+APP_VERSION = "0.6.0"
 # "utente/repository" su GitHub: con le release pubblicate li', il mixer avvisa delle versioni nuove
 UPDATE_REPO = ""
 
@@ -3381,6 +3383,14 @@ class SettingsDialog(QDialog):
                     "cosa è cambiato (mute, preset, uscita)."), self._option("osd")),
                 (tr("Lingua"), None, self.lang_box),
             ]),
+            (tr("Mixer"), None, [
+                (tr("Mostra da sole le app nuove"),
+                 tr("Un'app che riproduce audio per la prima volta compare subito nel mixer, "
+                    "senza cliccare l'occhio."), self._option("auto_show")),
+                (tr("Nascondi le app chiuse"),
+                 tr("Le strisce delle app che non stanno suonando spariscono e tornano quando "
+                    "l'app riparte."), self._option("hide_idle")),
+            ]),
             (tr("Aiuto"), None, [
                 (tr("Guida rapida"), tr("Un giro guidato tra tutte le parti del mixer."), guide),
             ]),
@@ -5010,6 +5020,7 @@ class Mixer(QWidget):
         self.default_out = None
         self.default_in = None
         self._known_outs = None
+        self._tray_mic_muted = False
         self.ad_muted = set()
         self._ad_state = {}
         self._pid_names = {}
@@ -5083,6 +5094,8 @@ class Mixer(QWidget):
         self.bridge.quick_recorded.connect(self.apply_quick_binding)
         for name, key in self.config.items():
             self.register(name, key)
+        for name in self.sources:
+            self.register_vol_keys(name)
         used_keys = set(self.config.values())
         for pname, pdata in self.presets.items():
             key = pdata.get("hotkey")
@@ -5388,6 +5401,7 @@ class Mixer(QWidget):
             self.pending_reset.add(name)
             save_pending(self.pending_reset)
         self.unregister(name)
+        self.unregister_vol_keys(name)
         if self.config.pop(name, None) is not None:
             save_config(self.config)
         self.sources.pop(name, None)
@@ -5446,7 +5460,7 @@ class Mixer(QWidget):
         for name, sessions in groups.items():
             info = self.sources.get(name)
             if info is None:
-                self.sources[name] = {"visible": False,
+                self.sources[name] = {"visible": bool(self.settings.get("auto_show")),
                                       "exe": app_exe(sessions)}
                 self.add_row(name)
                 changed = added = True
@@ -5484,6 +5498,7 @@ class Mixer(QWidget):
         self.track_device_volumes()
         self.sync_buses()
         self.update_status()
+        self.update_tray_icon()
         self.sync_mirrors()
         self.run_plugins()
 
@@ -5668,8 +5683,10 @@ class Mixer(QWidget):
             pass
 
     def sync_strips(self):
-        """Mostra nel mixer solo le fonti con l'occhio acceso."""
-        wanted = [n for n, i in self.sources.items() if i.get("visible")]
+        """Mostra nel mixer solo le fonti con l'occhio acceso (e, se richiesto, solo le app aperte)."""
+        hide_idle = self.settings.get("hide_idle")
+        wanted = [n for n, i in self.sources.items() if i.get("visible")
+                  and not (hide_idle and not i.get("device") and n not in self.groups)]
         changed = False
         solo_changed = False
         for name in list(self.strips):
@@ -5968,6 +5985,8 @@ class Mixer(QWidget):
         save_settings(self.settings)
         if key == "fade_ms":
             self.fader.set_duration(value)
+        if key == "hide_idle":
+            self.sync_strips()
         if key == "plugins":
             self.plugins = load_plugins(self.plugin_api) if value else []
         if key == "always_on_top":
@@ -6177,6 +6196,13 @@ class Mixer(QWidget):
                 bus_actions[act] = bid
             bsub.addSeparator()
             bus_actions[bsub.addAction(tr("Nuovo gruppo…"))] = "new"
+        info_now = self.sources.get(name, {})
+        ksub = menu.addMenu(tr("Tasti volume"))
+        vol_actions = {}
+        for field, label in (("vol_up", tr("Volume +")), ("vol_down", tr("Volume −"))):
+            key = info_now.get(field)
+            act = ksub.addAction(f"{label}:  {key.upper() if key else tr('Assegna')}…")
+            vol_actions[act] = field
         midi_learn = menu.addAction(tr("Assegna controllo MIDI…"))
         bound = [k for k, v in self.midi_bindings.items() if v == name]
         midi_clear = menu.addAction(tr("Togli controlli MIDI ({n})", n=len(bound)))
@@ -6185,6 +6211,9 @@ class Mixer(QWidget):
         reset = menu.addAction(tr("Ripristina striscia…"))
         reset.setEnabled(self.strip_customized(name))
         chosen = menu.exec(pos)
+        if chosen in vol_actions:
+            self.start_vol_bind(name, vol_actions[chosen])
+            return
         if chosen in width_all:
             self.set_strip_width_all(width_all[chosen])
             return
@@ -6353,6 +6382,31 @@ class Mixer(QWidget):
             head.addWidget(info)
         head.addStretch(1)
         return head
+
+    def update_tray_icon(self):
+        """Icona della tray con un bollino rosso quando il microfono predefinito e' mutato."""
+        sess = self.dev_sessions.get(self.default_in) if self.default_in else None
+        try:
+            muted = bool(sess is not None and sess.SimpleAudioVolume.GetMute())
+        except Exception:
+            muted = False
+        if muted == self._tray_mic_muted:
+            return
+        self._tray_mic_muted = muted
+        icon = QIcon(resource_path("icon.ico"))
+        if muted:
+            pix = icon.pixmap(64, 64)
+            p = QPainter(pix)
+            p.setRenderHint(QPainter.Antialiasing)
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor("#ef4444"))
+            p.drawEllipse(QRectF(30, 30, 34, 34))
+            p.setPen(QPen(QColor("#ffffff"), 5, Qt.SolidLine, Qt.RoundCap))
+            p.drawLine(QPointF(39, 39), QPointF(55, 55))
+            p.end()
+            icon = QIcon(pix)
+        self.tray.setIcon(icon)
+        self.tray.setToolTip("Audio Mixer" + (" \u2014 " + tr("microfono mutato") if muted else ""))
 
     def update_status(self):
         """Barra in basso: uscita di Windows, preset attivo, ducking e app che suonano."""
@@ -6627,6 +6681,104 @@ class Mixer(QWidget):
             except Exception:
                 pass
 
+    VOL_STEP = 5
+
+    def register_vol_keys(self, name):
+        """Tasti globali Volume + / Volume - di un'app (salvati in sources.json)."""
+        for field, step in (("vol_up", self.VOL_STEP), ("vol_down", -self.VOL_STEP)):
+            key = self.sources.get(name, {}).get(field)
+            if not key:
+                continue
+            try:
+                keyboard.add_hotkey(key, lambda n=name, s=step: self.bridge.call_main.emit(
+                    lambda: self.step_volume(n, s)))
+            except Exception as e:
+                log_error(f"Tasto volume non valido per {name}: {key} ({e})")
+
+    def unregister_vol_keys(self, name):
+        for field in ("vol_up", "vol_down"):
+            key = self.sources.get(name, {}).get(field)
+            if key:
+                try:
+                    keyboard.remove_hotkey(key)
+                except Exception:
+                    pass
+
+    def used_hotkeys(self):
+        """Tutti i tasti globali gia' assegnati (mute, volume, preset, cambio uscita)."""
+        used = {k for k in self.config.values() if k}
+        used |= {p.get("hotkey") for p in self.presets.values() if p.get("hotkey")}
+        used |= {i.get(f) for i in self.sources.values() for f in ("vol_up", "vol_down") if i.get(f)}
+        if self.quick.get("hotkey"):
+            used.add(self.quick["hotkey"])
+        return used
+
+    def start_vol_bind(self, name, field):
+        """Registra il prossimo tasto premuto come Volume + o Volume - di `name` (Esc = togli)."""
+        if self.recording:
+            return
+        self.recording = True
+        label = tr("Volume +") if field == "vol_up" else tr("Volume −")
+        box = QMessageBox(QMessageBox.Information, label,
+                          tr("Premi il tasto o la combinazione per «{what}» di «{name}».\n"
+                             "Esc = togli il tasto.", what=label, name=self.display_name(name)),
+                          QMessageBox.NoButton, self)
+        box.setModal(False)
+        box.show()
+
+        def worker():
+            try:
+                key = keyboard.read_hotkey(suppress=False)
+            except Exception:
+                key = ""
+            self.bridge.call_main.emit(lambda: self._vol_bound(name, field, key, box))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _vol_bound(self, name, field, key, box):
+        self.recording = False
+        box.close()
+        info = self.sources.get(name)
+        if info is None:
+            return
+        key = "" if key == "esc" else key
+        if key and key != info.get(field) and key in self.used_hotkeys():
+            QMessageBox.warning(self, tr("Tasto già in uso"),
+                                tr("Il tasto {key} è già assegnato a un'altra funzione.",
+                                   key=key.upper()))
+            return
+        self.unregister_vol_keys(name)
+        if key:
+            info[field] = key
+        else:
+            info.pop(field, None)
+        save_sources(self.sources)
+        self.register_vol_keys(name)
+
+    def step_volume(self, name, step):
+        """Volume + / - da tasto: di 5 punti, rispettando il limite; avviso a schermo."""
+        strip = self.strips.get(name)
+        if strip is not None and strip.isEnabled():
+            strip.slider.setValue(strip.slider.value() + step)
+            pct = strip.slider.value()
+        else:
+            sessions = self.groups.get(name, [])
+            if not sessions:
+                return
+            try:
+                cur = float(sessions[0].SimpleAudioVolume.GetMasterVolume())
+            except Exception:
+                return
+            level = max(0.0, min(cur + step / 100, limit_pct(self.sources.get(name)) / 100))
+            cancel_fade(sessions)
+            for s in sessions:
+                try:
+                    s.SimpleAudioVolume.SetMasterVolume(level, None)
+                except Exception:
+                    pass
+            pct = round(level * 100)
+        self.notify("\U0001F509" if step < 0 else "\U0001F50A", f"{self.display_name(name)}: {pct}%")
+
     def toggle_mute(self, name):
         if name == SYSTEM_NAME:
             if self.system.sessions:
@@ -6681,6 +6833,14 @@ class Mixer(QWidget):
         self.recording = False
         if key == "esc":
             key = ""
+        # shortcut: solo il tasto mute controlla i tasti volume; preset e cambio uscita no, aggiungerlo se capita
+        if key and any(key in (i.get("vol_up"), i.get("vol_down")) for i in self.sources.values()):
+            QMessageBox.warning(self, tr("Tasto già in uso"),
+                                tr("Il tasto {key} è già assegnato a un'altra funzione.",
+                                   key=key.upper()))
+            if name in self.strips:
+                self.strips[name].set_key(self.config.get(name, ""))
+            return
         clash = [p for p, d in self.presets.items() if key and d.get("hotkey") == key]
         quick_clash = bool(key) and self.quick.get("hotkey") == key
         if clash or quick_clash:

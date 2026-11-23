@@ -328,6 +328,16 @@
     "{name}: muto": "{name}: звук выключен",
     "{name}: audio attivo": "{name}: звук включён",
     "Avviso a schermo": "Уведомление на экране",
-    "Quando usi un tasto rapido col mixer nascosto, un piccolo riquadro mostra cosa è cambiato (mute, preset, uscita).": "Когда вы нажимаете горячую клавишу при скрытом микшере, маленькое окно показывает, что изменилось (звук, пресет, выход)."
+    "Quando usi un tasto rapido col mixer nascosto, un piccolo riquadro mostra cosa è cambiato (mute, preset, uscita).": "Когда вы нажимаете горячую клавишу при скрытом микшере, маленькое окно показывает, что изменилось (звук, пресет, выход).",
+    "Mostra da sole le app nuove": "Показывать новые приложения сразу",
+    "Un'app che riproduce audio per la prima volta compare subito nel mixer, senza cliccare l'occhio.": "Приложение, впервые воспроизводящее звук, сразу появляется в микшере без нажатия на глаз.",
+    "Nascondi le app chiuse": "Скрывать закрытые приложения",
+    "Le strisce delle app che non stanno suonando spariscono e tornano quando l'app riparte.": "Полосы приложений, которые не играют, исчезают и возвращаются, когда приложение снова запускается.",
+    "Volume +": "Громкость +",
+    "Volume −": "Громкость −",
+    "Premi il tasto o la combinazione per «{what}» di «{name}».\nEsc = togli il tasto.": "Нажмите клавишу или сочетание для «{what}» приложения «{name}».\nEsc — убрать клавишу.",
+    "Il tasto {key} è già assegnato a un'altra funzione.": "Клавиша {key} уже назначена другой функции.",
+    "Tasti volume": "Клавиши громкости",
+    "microfono mutato": "микрофон выключен"
   }
 }
