@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
     QAbstractButton, QSizePolicy, QMenu, QInputDialog, QDialog, QMessageBox,
     QSystemTrayIcon, QCheckBox, QTabWidget, QSplitter, QComboBox, QColorDialog, QSpacerItem,
     QSpinBox, QGridLayout, QStyle, QStyleOptionSlider, QTimeEdit, QLineEdit, QFileDialog,
+    QListWidget, QStackedWidget,
 )
 from comtypes import CLSCTX_ALL, GUID, COMMETHOD, IUnknown
 from pycaw.constants import DEVICE_STATE, EDataFlow
@@ -458,6 +459,19 @@ QTabBar::tab { padding: ${p6} ${p14}; background: transparent; color: ${muted};
 QTabBar::tab:hover { background: ${raised}; color: ${text}; }
 QTabBar::tab:selected { background: ${accent}; color: ${on_accent}; }
 QFrame#dropLine { background: ${accent}; border: none; }
+QListWidget#settingsNav { background: transparent; border: none; outline: none; font-size: ${p13}; }
+QListWidget#settingsNav::item { padding: ${p8} ${p12}; border-radius: ${p8}; margin: ${p1} 0; color: ${muted}; }
+QListWidget#settingsNav::item:hover { background: ${row_hover}; color: ${text}; }
+QListWidget#settingsNav::item:selected { background: ${raised}; color: ${strong}; }
+QFrame#card { background: ${panel}; border: 1px solid ${border}; border-radius: ${p12}; }
+QFrame#card QLabel, QFrame#card QCheckBox { background: transparent; }
+QFrame#card QCheckBox::indicator { width: ${p36}; height: ${p20}; border: none; background: transparent;
+                                   image: url("${switch_off}"); }
+QFrame#card QCheckBox::indicator:checked { image: url("${switch_on}"); }
+QLabel#pageTitle { font-size: ${p20}; font-weight: 700; color: ${strong}; padding-top: ${p4}; }
+QLabel#cardTitle { font-size: ${p13}; font-weight: 700; color: ${strong}; }
+QLabel#desc { color: ${muted}; font-size: ${p11}; }
+QStackedWidget, QStackedWidget QScrollArea > QWidget > QWidget { background: ${bg}; }
 """
 
 
@@ -488,11 +502,40 @@ def _arrow_png(direction, color):
     return path.replace("\\", "/")
 
 
+def _switch_png(on):
+    """Interruttore (binario arrotondato + pallino) per le caselle delle Impostazioni, nei colori
+    del tema. Come le frecce: un PNG nella cartella temporanea, percorso restituito."""
+    w, h = sc(36), sc(20)
+    track = PALETTE["accent"] if on else PALETTE["line"]
+    folder = os.path.join(tempfile.gettempdir(), "AudioMixerUI")
+    path = os.path.join(folder, f"switch_{int(on)}_{track.lstrip('#')}_{w}.png")
+    if not os.path.exists(path):
+        try:
+            os.makedirs(folder, exist_ok=True)
+            img = QImage(w, h, QImage.Format_ARGB32)
+            img.fill(0)
+            pt = QPainter(img)
+            pt.setRenderHint(QPainter.Antialiasing)
+            pt.setPen(Qt.NoPen)
+            pt.setBrush(QColor(track))
+            pt.drawRoundedRect(QRectF(0, 0, w, h), h / 2, h / 2)
+            pt.setBrush(QColor("#ffffff"))
+            d = h - sc(6)
+            pt.drawEllipse(QRectF(w - d - sc(3) if on else sc(3), sc(3), d, d))
+            pt.end()
+            img.save(path)
+        except Exception:
+            pass
+    return path.replace("\\", "/")
+
+
 def build_style():
     """Foglio di stile per il tema, l'accento e la scala attuali."""
     values = dict(PALETTE)
     values["arrow_up"] = _arrow_png("up", PALETTE["text"])
     values["arrow_down"] = _arrow_png("down", PALETTE["text"])
+    values["switch_on"] = _switch_png(True)
+    values["switch_off"] = _switch_png(False)
     values.update({f"p{n}": f"{sc(n)}px" for n in range(0, 41)})
     values["base_font"] = "" if UI["scale"] == 1.0 else f"font-size: {sc(12)}px;"
     template = _CLASSIC_TEMPLATE if is_classic() else _STYLE_TEMPLATE
@@ -573,6 +616,14 @@ QTabWidget::pane { border: 1px solid ${border}; }
 QTabBar::tab { padding: ${p6} ${p14}; background: ${panel}; }
 QTabBar::tab:selected { background: ${accent}; color: ${on_accent}; }
 QFrame#dropLine { background: ${accent}; border: none; }
+QListWidget#settingsNav { background: ${panel}; border: 1px solid ${border}; font-size: ${p12}; }
+QListWidget#settingsNav::item { padding: ${p6} ${p8}; }
+QListWidget#settingsNav::item:selected { background: ${accent}; color: ${on_accent}; }
+QFrame#card { background: ${panel}; border: 1px solid ${border}; }
+QFrame#card QLabel, QFrame#card QCheckBox { background: transparent; }
+QLabel#pageTitle { font-size: ${p16}; font-weight: 700; }
+QLabel#cardTitle { font-weight: 700; }
+QLabel#desc { color: ${muted}; font-size: ${p11}; }
 """
 
 
@@ -1146,7 +1197,7 @@ class Bridge(QObject):
 
 
 APP_ID = "audiomixer-single-instance"
-APP_VERSION = "0.5.3"
+APP_VERSION = "0.5.4"
 # "utente/repository" su GitHub: con le release pubblicate li', il mixer avvisa delle versioni nuove
 UPDATE_REPO = ""
 
@@ -3274,86 +3325,20 @@ class SourceRow(QFrame):
 class SettingsDialog(QDialog):
     """Finestra Impostazioni (le modifiche si applicano subito)."""
 
+    PAGES = ("general", "audio", "devices", "look", "ducking", "limits", "automation", "advanced")
+
     def __init__(self, mixer, tab=0):
         super().__init__(mixer)
+        self.mixer = mixer
         self.setWindowTitle(tr("Impostazioni"))
-        self.setMinimumWidth(380)
+        self.setMinimumSize(sc(720), sc(520))
+        self.resize(sc(780), sc(600))
         self.setWindowFlag(Qt.WindowStaysOnTopHint, True)
 
-        general = QWidget()
-        gl = QVBoxLayout(general)
-        gl.setAlignment(Qt.AlignTop)
-        gl.setSpacing(10)
-        for key, text in [("close_to_tray", tr("Chiudi con la X = nascondi nella tray")),
-                          ("start_minimized", tr("Avvia ridotto nella tray")),
-                          ("always_on_top", tr("Sempre in primo piano")),
-                          ("ad_mute", tr("Muta le pubblicità (Spotify Free)")),
-                          ("per_device_volume",
-                           tr("Ricorda il volume di ogni app per ogni dispositivo di uscita"))]:
-            cb = QCheckBox(text)
-            cb.setChecked(bool(mixer.settings.get(key)))
-            cb.toggled.connect(lambda v, k=key: mixer.set_option(k, v))
-            gl.addWidget(cb)
-        self.autostart = QCheckBox(tr("Avvia con Windows"))
+        # --- Generale ---------------------------------------------------------------
+        self.autostart = QCheckBox()
         self.autostart.setChecked(autostart_enabled())
         self.autostart.toggled.connect(self.on_autostart)
-        gl.addWidget(self.autostart)
-
-        plug_row = QHBoxLayout()
-        self.plugins_cb = QCheckBox(tr("Plugin utente (file Python nella cartella plugin)"))
-        self.plugins_cb.setToolTip(tr("I plugin eseguono codice Python sul tuo PC: usa solo file "
-                                      "di cui ti fidi."))
-        self.plugins_cb.setChecked(bool(mixer.settings.get("plugins")))
-        self.plugins_cb.toggled.connect(self.on_plugins)
-        plug_row.addWidget(self.plugins_cb)
-        plug_row.addStretch(1)
-        plug_dir = QPushButton(tr("Apri cartella"))
-        plug_dir.clicked.connect(self.open_plugins_dir)
-        plug_row.addWidget(plug_dir)
-        gl.addLayout(plug_row)
-        guide = QPushButton(tr("Guida rapida"))
-        guide.clicked.connect(lambda: (self.accept(), QTimer.singleShot(0, mixer.show_tutorial)))
-        gl.addWidget(guide, 0, Qt.AlignLeft)
-
-        fade_row = QHBoxLayout()
-        fade_label = QLabel(tr("Dissolvenza"))
-        fade_tip = tr("Durata del fade quando muti, smuti, usi il solo o cambi preset.\n"
-                      "0 = cambi istantanei.")
-        fade_label.setToolTip(fade_tip)
-        fade_row.addWidget(fade_label)
-        fade_row.addStretch(1)
-        self.fade_box = QSpinBox()
-        self.fade_box.setRange(0, FADE_MAX_MS)
-        self.fade_box.setSingleStep(50)
-        self.fade_box.setSuffix(" ms")
-        self.fade_box.setSpecialValueText(tr("Disattivata"))
-        self.fade_box.setToolTip(fade_tip)
-        self.fade_box.setValue(int(mixer.settings.get("fade_ms", 0)))
-        self.fade_box.valueChanged.connect(lambda v: mixer.set_option("fade_ms", int(v)))
-        fade_row.addWidget(self.fade_box)
-        gl.addLayout(fade_row)
-
-        safe_row = QHBoxLayout()
-        safe_tip = tr("Quando colleghi cuffie o casse, il loro volume non parte mai sopra questo "
-                      "valore, per evitare spaventi.")
-        safe_label = QLabel(tr("Volume di sicurezza"))
-        safe_label.setToolTip(safe_tip)
-        safe_row.addWidget(safe_label)
-        safe_row.addStretch(1)
-        safe_box = QSpinBox()
-        safe_box.setRange(0, 100)
-        safe_box.setSingleStep(5)
-        safe_box.setSuffix(" %")
-        safe_box.setSpecialValueText(tr("Disattivato"))
-        safe_box.setToolTip(safe_tip)
-        safe_box.setValue(int(mixer.settings.get("safe_volume", 0)))
-        safe_box.valueChanged.connect(lambda v: mixer.set_option("safe_volume", int(v)))
-        safe_row.addWidget(safe_box)
-        gl.addLayout(safe_row)
-
-        lang_row = QHBoxLayout()
-        lang_row.addWidget(QLabel(tr("Lingua")))
-        lang_row.addStretch(1)
         self.lang_box = QComboBox()
         self.lang_box.addItem(tr("Automatica (lingua del sistema)"), "auto")
         for code, label in LANGUAGES.items():
@@ -3364,59 +3349,100 @@ class SettingsDialog(QDialog):
                                     path=LANGUAGE_DIRS[0] if LANGUAGE_DIRS else "",
                                     count=len(LANGUAGES) - 1))
         self.lang_box.currentIndexChanged.connect(self.on_language)
-        lang_row.addWidget(self.lang_box)
-        gl.addLayout(lang_row)
+        guide = QPushButton(tr("Avvia"))
+        guide.clicked.connect(lambda: (self.accept(), QTimer.singleShot(0, mixer.show_tutorial)))
+        general = self._page(tr("Generale"), tr("Avvio, finestra e lingua."), [
+            (tr("Avvio"), None, [
+                (tr("Avvia con Windows"), tr("Il mixer parte da solo quando accedi."), self.autostart),
+                (tr("Avvia ridotto nella tray"), tr("All'avvio resta solo l'icona accanto all'orologio."),
+                 self._option("start_minimized")),
+                (tr("Chiudi con la X = nascondi nella tray"),
+                 tr("La X nasconde la finestra invece di chiudere il mixer."),
+                 self._option("close_to_tray")),
+            ]),
+            (tr("Finestra"), None, [
+                (tr("Sempre in primo piano"), tr("Il mixer resta sopra le altre finestre."),
+                 self._option("always_on_top")),
+                (tr("Lingua"), None, self.lang_box),
+            ]),
+            (tr("Aiuto"), None, [
+                (tr("Guida rapida"), tr("Un giro guidato tra tutte le parti del mixer."), guide),
+            ]),
+        ])
 
-        self.mixer = mixer
+        # --- Audio --------------------------------------------------------------------
+        self.fade_box = QSpinBox()
+        self.fade_box.setRange(0, FADE_MAX_MS)
+        self.fade_box.setSingleStep(50)
+        self.fade_box.setSuffix(" ms")
+        self.fade_box.setSpecialValueText(tr("Disattivata"))
+        self.fade_box.setValue(int(mixer.settings.get("fade_ms", 0)))
+        self.fade_box.valueChanged.connect(lambda v: mixer.set_option("fade_ms", int(v)))
+        safe_box = QSpinBox()
+        safe_box.setRange(0, 100)
+        safe_box.setSingleStep(5)
+        safe_box.setSuffix(" %")
+        safe_box.setSpecialValueText(tr("Disattivato"))
+        safe_box.setValue(int(mixer.settings.get("safe_volume", 0)))
+        safe_box.valueChanged.connect(lambda v: mixer.set_option("safe_volume", int(v)))
+        audio = self._page(tr("Audio"), tr("Come cambiano volumi e mute."), [
+            (tr("Transizioni"), None, [
+                (tr("Dissolvenza"), tr("Durata del fade quando muti, smuti, usi il solo o cambi "
+                                       "preset. 0 = cambi istantanei."), self.fade_box),
+            ]),
+            (tr("Protezione"), None, [
+                (tr("Volume di sicurezza"),
+                 tr("Quando colleghi cuffie o casse, il loro volume non parte mai sopra questo "
+                    "valore, per evitare spaventi."), safe_box),
+            ]),
+            (tr("Automatismi"), None, [
+                (tr("Ricorda il volume per dispositivo"),
+                 tr("Ogni app ritrova il suo volume quando cambi uscita (cuffie, casse...)."),
+                 self._option("per_device_volume")),
+                (tr("Muta le pubblicità"),
+                 tr("Spotify Free viene mutato durante le pubblicità e torna quando riparte la "
+                    "musica."), self._option("ad_mute")),
+            ]),
+        ])
 
-        gl.addWidget(QLabel(tr("Cambio rapido dispositivo")))
-        quick_hint = QLabel(tr("Spunta le uscite tra cui passare: un tasto o il menu della tray "
-                               "passano alla successiva. Ogni dispositivo ricorda il proprio "
-                               "volume."))
-        quick_hint.setWordWrap(True)
-        quick_hint.setStyleSheet(f"color: {PALETTE['hint']};")
-        gl.addWidget(quick_hint)
-        outs = [n for n, i in mixer.sources.items() if i.get("device") == "out"]
+        # --- Dispositivi ---------------------------------------------------------------
+        quick_rows = []
         chosen = set(mixer.quick.get("devices", []))
-        for n in outs:
-            cb = QCheckBox(mixer.display_name(n))
+        for n in [n for n, i in mixer.sources.items() if i.get("device") == "out"]:
+            cb = QCheckBox()
             cb.setChecked(n in chosen)
             cb.toggled.connect(lambda v, n=n: self.on_quick_toggle(n, v))
-            gl.addWidget(cb)
-        if not outs:
-            gl.addWidget(QLabel(tr("(nessuna uscita conosciuta)")))
-        key_row = QHBoxLayout()
-        key_row.addWidget(QLabel(tr("Tasto rapido")))
-        key_row.addStretch(1)
+            quick_rows.append((mixer.display_name(n), None, cb))
+        if not quick_rows:
+            quick_rows.append((tr("(nessuna uscita conosciuta)"), None, None))
         self.quick_key_btn = QPushButton()
         self.quick_key_btn.setObjectName("key")
         self.quick_key_btn.setToolTip(tr("Clic per assegnare un tasto globale (Esc = rimuovi)"))
         self.quick_key_btn.clicked.connect(self.on_quick_key)
         self._update_quick_key_btn()
-        key_row.addWidget(self.quick_key_btn)
-        gl.addLayout(key_row)
-        look = QWidget()
-        al = QVBoxLayout(look)
-        al.setAlignment(Qt.AlignTop)
-        al.setSpacing(12)
+        devices = self._page(tr("Dispositivi"), tr("Cambio rapido dell'uscita di Windows."), [
+            (tr("Uscite del cambio rapido"),
+             tr("Spunta le uscite tra cui passare: il tasto rapido o il menu della tray passano "
+                "alla successiva. Ogni dispositivo ricorda il proprio volume."), quick_rows),
+            (tr("Tasto rapido"), None, [
+                (tr("Passa all'uscita successiva"), tr("Funziona anche col mixer nascosto."),
+                 self.quick_key_btn),
+            ]),
+        ])
 
-        theme_row = QHBoxLayout()
-        theme_row.addWidget(QLabel(tr("Tema")))
-        theme_row.addStretch(1)
+        # --- Aspetto ---------------------------------------------------------------------
         self.theme_box = QComboBox()
         for key, th in THEMES.items():
             self.theme_box.addItem(tr(th["label"]), key)
         self.theme_box.setCurrentIndex(max(0, self.theme_box.findData(mixer.settings.get("theme"))))
         self.theme_box.currentIndexChanged.connect(self.on_theme)
-        theme_row.addWidget(self.theme_box)
-        al.addLayout(theme_row)
-
-        al.addWidget(QLabel(tr("Colore d'accento")))
-        swatch_row = QHBoxLayout()
+        swatches = QWidget()
+        swatch_row = QHBoxLayout(swatches)
+        swatch_row.setContentsMargins(0, 0, 0, 0)
         self.swatches = {}
         for color in ACCENT_CHOICES:
             btn = QPushButton()
-            btn.setFixedSize(26, 26)
+            btn.setFixedSize(sc(24), sc(24))
             btn.setCursor(Qt.PointingHandCursor)
             btn.setToolTip(color)
             btn.clicked.connect(lambda _=False, c=color: self.pick_accent(c))
@@ -3425,15 +3451,7 @@ class SettingsDialog(QDialog):
         custom = QPushButton(tr("Scegli…"))
         custom.clicked.connect(self.choose_accent)
         swatch_row.addWidget(custom)
-        swatch_row.addStretch(1)
-        al.addLayout(swatch_row)
-
-        scale_row = QHBoxLayout()
-        scale_row.addWidget(QLabel(tr("Scala dell'interfaccia")))
-        scale_row.addStretch(1)
         self.scale_label = QLabel()
-        scale_row.addWidget(self.scale_label)
-        al.addLayout(scale_row)
         self.scale_slider = QSlider(Qt.Horizontal)
         self.scale_slider.setRange(SCALE_MIN, SCALE_MAX)
         self.scale_slider.setSingleStep(5)
@@ -3443,49 +3461,192 @@ class SettingsDialog(QDialog):
         self._scale_timer = QTimer(self, singleShot=True, interval=150,
                                    timeout=lambda: mixer.change_appearance(
                                        scale=self.scale_slider.value()))
-        al.addWidget(self.scale_slider)
-
-        width_row = QHBoxLayout()
-        width_row.addWidget(QLabel(tr("Larghezza delle strisce")))
-        width_row.addStretch(1)
         width_label = QLabel()
-        width_row.addWidget(width_label)
-        al.addLayout(width_row)
         width_slider = QSlider(Qt.Horizontal)
         width_slider.setRange(70, 180)
         width_slider.setSingleStep(5)
         width_slider.setPageStep(10)
         width_slider.setValue(int(mixer.settings.get("strip_width", STRIP_W)))
         width_label.setText(f"{width_slider.value()} px")
-        width_slider.setToolTip(tr("Vale per tutte le strisce e toglie le larghezze scelte "
-                                   "una per una"))
         width_timer = QTimer(self, singleShot=True, interval=200,
                              timeout=lambda: mixer.set_strip_width_all(width_slider.value()))
         width_slider.valueChanged.connect(
             lambda v: (width_label.setText(f"{v} px"), width_timer.start()))
-        al.addWidget(width_slider)
         reset = QPushButton(tr("Ripristina aspetto"))
         reset.clicked.connect(self.reset_look)
-        al.addWidget(reset, 0, Qt.AlignLeft)
+        look = self._page(tr("Aspetto"), tr("Tema, colori e dimensioni."), [
+            (tr("Colori"), None, [
+                (tr("Tema"), tr("Ogni tema porta il suo colore d'accento."), self.theme_box),
+                (tr("Colore d'accento"), None, swatches),
+            ]),
+            (tr("Dimensioni"), None, [
+                (tr("Scala dell'interfaccia"), None, self._slider_box(self.scale_slider, self.scale_label)),
+                (tr("Larghezza delle strisce"),
+                 tr("Vale per tutte le strisce e toglie le larghezze scelte una per una"),
+                 self._slider_box(width_slider, width_label)),
+            ]),
+            (None, None, [(tr("Torna al tema Aurora scuro, scala 100%."), None, reset)]),
+        ])
         self.refresh_look()
 
-        tabs = QTabWidget()
-        self.tabs = tabs
-        tabs.addTab(general, tr("Generale"))
-        tabs.addTab(look, tr("Aspetto"))
-        tabs.addTab(self._ducking_tab(mixer), tr("Ducking"))
-        tabs.addTab(self._limits_tab(mixer), tr("Limiti"))
-        tabs.addTab(self._automation_tab(mixer), tr("Automazione"))
-        tabs.setCurrentIndex(tab)
+        # --- Avanzate ---------------------------------------------------------------------
+        self.plugins_cb = QCheckBox()
+        self.plugins_cb.setChecked(bool(mixer.settings.get("plugins")))
+        self.plugins_cb.toggled.connect(self.on_plugins)
+        plug_dir = QPushButton(tr("Apri cartella"))
+        plug_dir.clicked.connect(self.open_plugins_dir)
+        export_btn = QPushButton(tr("Esporta…"))
+        export_btn.clicked.connect(lambda: mixer.export_profile(self))
+        import_btn = QPushButton(tr("Importa…"))
+        import_btn.clicked.connect(lambda: mixer.import_profile(self))
+        data_dir = QPushButton(tr("Apri cartella"))
+        data_dir.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(CONFIG_DIR)))
+        advanced = self._page(tr("Avanzate"), tr("Plugin, profili e dati del programma."), [
+            (tr("Plugin utente"), None, [
+                (tr("Attiva i plugin"), tr("I plugin eseguono codice Python sul tuo PC: usa solo "
+                                           "file di cui ti fidi."), self.plugins_cb),
+                (tr("Cartella dei plugin"), None, plug_dir),
+            ]),
+            (tr("Profili"), tr("Preset, regole automatiche e ducking in un file JSON da "
+                               "condividere o da tenere come copia."), [
+                (tr("Esporta profilo"), None, export_btn),
+                (tr("Importa profilo"), None, import_btn),
+            ]),
+            (tr("Informazioni"), None, [
+                # ​ dopo ogni "\" permette di andare a capo dentro un percorso lungo
+                (f"AudioMixer {APP_VERSION}", CONFIG_DIR.replace("\\", "\\​"), data_dir),
+            ]),
+        ])
+
+        pages = [
+            ("⚙", tr("Generale"), general),
+            ("\U0001F50A", tr("Audio"), audio),
+            ("\U0001F3A7", tr("Dispositivi"), devices),
+            ("\U0001F3A8", tr("Aspetto"), look),
+            ("\U0001F4C9", tr("Ducking"), self._wrap(tr("Ducking"), tr("Abbassa alcune app mentre "
+                                                                      "altre suonano."),
+                                                     self._ducking_tab(mixer))),
+            ("\U0001F6A7", tr("Limiti"), self._wrap(tr("Limiti"), tr("Volume massimo per app."),
+                                                    self._limits_tab(mixer))),
+            ("⏰", tr("Automazione"), self._wrap(tr("Automazione"),
+                                                     tr("Preset che si attivano da soli."),
+                                                     self._automation_tab(mixer))),
+            ("\U0001F9E9", tr("Avanzate"), advanced),
+        ]
+        self.nav = QListWidget()
+        self.nav.setObjectName("settingsNav")
+        self.nav.setFixedWidth(sc(190))
+        self.stack = QStackedWidget()
+        for icon, label, page in pages:
+            self.nav.addItem(f"{icon}   {label}")
+            self.stack.addWidget(page)
+        self.nav.currentRowChanged.connect(self.stack.setCurrentIndex)
+        self.nav.setCurrentRow(max(0, min(len(pages) - 1, tab)))
+
         close = QPushButton(tr("Chiudi"))
         close.setDefault(True)
         close.clicked.connect(self.accept)
-        buttons = QHBoxLayout()
-        buttons.addStretch(1)
-        buttons.addWidget(close)
-        lay = QVBoxLayout(self)
-        lay.addWidget(tabs)
-        lay.addLayout(buttons)
+        side = QVBoxLayout()
+        side.addWidget(self.nav, 1)
+        side.addWidget(close)
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(sc(12), sc(12), sc(12), sc(12))
+        lay.setSpacing(sc(12))
+        lay.addLayout(side)
+        lay.addWidget(self.stack, 1)
+
+    def _option(self, key):
+        """Interruttore collegato a un'impostazione si/no."""
+        cb = QCheckBox()
+        cb.setChecked(bool(self.mixer.settings.get(key)))
+        cb.toggled.connect(lambda v, k=key: self.mixer.set_option(k, v))
+        return cb
+
+    @staticmethod
+    def _slider_box(slider, label):
+        box = QWidget()
+        row = QHBoxLayout(box)
+        row.setContentsMargins(0, 0, 0, 0)
+        slider.setMinimumWidth(sc(180))
+        label.setMinimumWidth(sc(48))
+        label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        row.addWidget(slider, 1)
+        row.addWidget(label)
+        return box
+
+    @staticmethod
+    def _header(lay, title, subtitle):
+        t = QLabel(title)
+        t.setObjectName("pageTitle")
+        lay.addWidget(t)
+        if subtitle:
+            s = QLabel(subtitle)
+            s.setObjectName("desc")
+            s.setWordWrap(True)
+            lay.addWidget(s)
+
+    def _page(self, title, subtitle, cards):
+        """Pagina con titolo e card. cards = [(titolo, descrizione, [(nome, spiegazione,
+        controllo)])]: in ogni riga nome e spiegazione a sinistra, il controllo a destra."""
+        page = QWidget()
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(sc(4), 0, sc(8), sc(8))
+        lay.setSpacing(sc(10))
+        self._header(lay, title, subtitle)
+        for card_title, card_desc, rows in cards:
+            card = QFrame()
+            card.setObjectName("card")
+            cl = QVBoxLayout(card)
+            cl.setContentsMargins(sc(16), sc(12), sc(16), sc(12))
+            cl.setSpacing(sc(10))
+            if card_title:
+                ct = QLabel(card_title)
+                ct.setObjectName("cardTitle")
+                cl.addWidget(ct)
+            if card_desc:
+                cd = QLabel(card_desc)
+                cd.setObjectName("desc")
+                cd.setWordWrap(True)
+                cl.addWidget(cd)
+            for name, desc, control in rows:
+                row = QHBoxLayout()
+                row.setSpacing(sc(16))
+                text = QVBoxLayout()
+                text.setSpacing(sc(2))
+                n = QLabel(name)
+                n.setWordWrap(True)
+                text.addWidget(n)
+                if desc:
+                    d = QLabel(desc)
+                    d.setObjectName("desc")
+                    d.setWordWrap(True)
+                    text.addWidget(d)
+                row.addLayout(text, 1)
+                if control is not None:
+                    row.addWidget(control, 0, Qt.AlignVCenter)
+                cl.addLayout(row)
+            lay.addWidget(card)
+        lay.addStretch(1)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setWidget(page)
+        return scroll
+
+    def _wrap(self, title, subtitle, content):
+        """Le pagine Ducking, Limiti e Automazione: titolo sopra e il contenuto in una card."""
+        page = QWidget()
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(sc(4), 0, sc(8), sc(8))
+        lay.setSpacing(sc(10))
+        self._header(lay, title, subtitle)
+        card = QFrame()
+        card.setObjectName("card")
+        cl = QVBoxLayout(card)
+        cl.setContentsMargins(sc(12), sc(12), sc(12), sc(12))
+        cl.addWidget(content)
+        lay.addWidget(card, 1)
+        return page
 
     def _ducking_tab(self, mixer):
         self.mixer = mixer
@@ -3784,7 +3945,7 @@ class SettingsDialog(QDialog):
 
     def on_language(self, _index):
         """Cambia lingua subito; la finestra si chiude e si riapre (stessa scheda) nella nuova lingua."""
-        self.mixer.reopen_settings_tab = self.tabs.currentIndex()
+        self.mixer.reopen_settings_tab = self.nav.currentRow()
         self.mixer.change_language(self.lang_box.currentData())
         self.accept()
 
@@ -4316,10 +4477,10 @@ class PresetsDialog(QDialog):
         self.off_btn.clicked.connect(mixer.deactivate_preset)
         export_btn = QPushButton(tr("Esporta profilo…"))
         export_btn.setToolTip(tr("Salva preset, regole automatiche e ducking in un file JSON"))
-        export_btn.clicked.connect(mixer.export_profile)
+        export_btn.clicked.connect(lambda: mixer.export_profile(self))
         import_btn = QPushButton(tr("Importa profilo…"))
         import_btn.setToolTip(tr("Aggiunge preset, regole e ducking da un file esportato"))
-        import_btn.clicked.connect(mixer.import_profile)
+        import_btn.clicked.connect(lambda: mixer.import_profile(self))
         close = QPushButton(tr("Chiudi"))
         close.setDefault(True)
         close.clicked.connect(self.accept)
@@ -6606,8 +6767,8 @@ class Mixer(QWidget):
         self._presets_dlg.exec()
         self._presets_dlg = None
 
-    def export_profile(self):
-        parent = self._presets_dlg or self
+    def export_profile(self, parent=None):
+        parent = parent or self._presets_dlg or self
         path, _ = QFileDialog.getSaveFileName(parent, tr("Esporta profilo"),
                                               "AudioMixer_profilo.json", "JSON (*.json)")
         if not path:
@@ -6619,10 +6780,10 @@ class Mixer(QWidget):
         except OSError as e:
             QMessageBox.warning(parent, tr("Esporta profilo"), str(e))
 
-    def import_profile(self):
+    def import_profile(self, parent=None):
         """Aggiunge i preset (sostituisce quelli con lo stesso nome, tenendo il loro tasto),
         le regole automatiche e i gruppi di ducking di un profilo esportato."""
-        parent = self._presets_dlg or self
+        parent = parent or self._presets_dlg or self
         path, _ = QFileDialog.getOpenFileName(parent, tr("Importa profilo"), "", "JSON (*.json)")
         if not path:
             return
