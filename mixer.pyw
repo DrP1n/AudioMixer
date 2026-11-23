@@ -358,6 +358,9 @@ def configure_appearance(theme, accent, scale_pct):
     PALETTE["theme"] = theme
     PALETTE["accent"] = accent.lower()
     PALETTE["on_accent"] = _on_color(accent)
+    bg, panel = QColor(PALETTE["bg"]), QColor(PALETTE["panel"])
+    PALETTE["surface"] = QColor((bg.red() + panel.red()) // 2, (bg.green() + panel.green()) // 2,
+                                (bg.blue() + panel.blue()) // 2).name()  # tra sfondo e card
 
 
 _STYLE_TEMPLATE = """
@@ -460,6 +463,11 @@ QTabBar::tab:hover { background: ${raised}; color: ${text}; }
 QTabBar::tab:selected { background: ${accent}; color: ${on_accent}; }
 QFrame#dropLine { background: ${accent}; border: none; }
 QListWidget#settingsNav { background: transparent; border: none; outline: none; font-size: ${p13}; }
+QFrame#panel { background: ${surface}; border: 1px solid ${border}; border-radius: ${p14}; }
+QWidget#clear, QFrame#panel QScrollArea > QWidget, QFrame#panel QLabel { background: transparent; }
+QLabel#sectionTitle { font-size: ${p13}; font-weight: 700; color: ${strong}; }
+QLabel#sectionInfo { font-size: ${p11}; color: ${muted}; }
+QLabel#status { font-size: ${p11}; color: ${muted}; }
 QListWidget#settingsNav::item { padding: ${p8} ${p12}; border-radius: ${p8}; margin: ${p1} 0; color: ${muted}; }
 QListWidget#settingsNav::item:hover { background: ${row_hover}; color: ${text}; }
 QListWidget#settingsNav::item:selected { background: ${raised}; color: ${strong}; }
@@ -617,6 +625,9 @@ QTabBar::tab { padding: ${p6} ${p14}; background: ${panel}; }
 QTabBar::tab:selected { background: ${accent}; color: ${on_accent}; }
 QFrame#dropLine { background: ${accent}; border: none; }
 QListWidget#settingsNav { background: ${panel}; border: 1px solid ${border}; font-size: ${p12}; }
+QFrame#panel { background: transparent; border: none; }
+QLabel#sectionTitle { font-weight: 700; }
+QLabel#sectionInfo, QLabel#status { color: ${muted}; font-size: ${p11}; }
 QListWidget#settingsNav::item { padding: ${p6} ${p8}; }
 QListWidget#settingsNav::item:selected { background: ${accent}; color: ${on_accent}; }
 QFrame#card { background: ${panel}; border: 1px solid ${border}; }
@@ -1197,7 +1208,7 @@ class Bridge(QObject):
 
 
 APP_ID = "audiomixer-single-instance"
-APP_VERSION = "0.5.4"
+APP_VERSION = "0.5.5"
 # "utente/repository" su GitHub: con le release pubblicate li', il mixer avvisa delle versioni nuove
 UPDATE_REPO = ""
 
@@ -5074,6 +5085,9 @@ class Mixer(QWidget):
                                      lambda n, b: self.move_source(n, b, same_kind=True))
         self.dev_inner.setLayout(self.dev_layout)
         sections = QWidget()
+        sections.setObjectName("clear")
+        list_inner.setObjectName("clear")
+        self.dev_inner.setObjectName("clear")
         sl = QVBoxLayout(sections)
         sl.setContentsMargins(0, 0, 0, 0)
         sl.setSpacing(0)
@@ -5081,10 +5095,11 @@ class Mixer(QWidget):
         sl.addWidget(self.dev_inner, 1)
         list_scroll.setWidget(sections)
         self.update_dev_section()
-        self.fonti = QWidget()
+        self.fonti = QFrame()
+        self.fonti.setObjectName("panel")
         fl = QVBoxLayout(self.fonti)
-        fl.setContentsMargins(0, 0, 0, 0)
-        fl.setSpacing(0)
+        fl.setContentsMargins(*((0, 0, 0, 0) if is_classic() else (sc(8), sc(8), sc(8), sc(8))))
+        fl.setSpacing(0 if is_classic() else sc(6))
         self.order_btn = QPushButton()
         self.order_btn.setObjectName("bar")
         self.order_btn.clicked.connect(self.show_order_menu)
@@ -5120,8 +5135,18 @@ class Mixer(QWidget):
         scroll.setWidgetResizable(True)
         inner = ReorderArea(True, scroll, Strip,
                             "application/x-audiomixer-strip", self.move_source)
+        inner.setObjectName("clear")
         inner.setLayout(self.row)
         scroll.setWidget(inner)
+        center = QFrame()
+        center.setObjectName("panel")
+        cl = QVBoxLayout(center)
+        cl.setContentsMargins(*((0, 0, 0, 0) if is_classic() else (sc(10), sc(8), sc(10), sc(6))))
+        cl.setSpacing(sc(6))
+        self.mixer_count = QLabel()
+        self.mixer_count.setObjectName("sectionInfo")
+        cl.addLayout(self._section_head(tr("Mixer"), self.mixer_count))
+        cl.addWidget(scroll, 1)
 
         self.left = QWidget()
         ll = QHBoxLayout(self.left)
@@ -5133,19 +5158,29 @@ class Mixer(QWidget):
         self.splitter.setChildrenCollapsible(False)
         self.splitter.setHandleWidth(5)
         self.splitter.addWidget(self.left)
-        self.splitter.addWidget(scroll)
+        self.splitter.addWidget(center)
         self.splitter.setStretchFactor(0, 0)
         self.splitter.setStretchFactor(1, 1)
         self.splitter.splitterMoved.connect(self.on_splitter_moved)
         self.master = MasterStrip()
         self.system = SystemStrip()
+        outputs = QFrame()
+        outputs.setObjectName("panel")
+        ol = QVBoxLayout(outputs)
+        ol.setContentsMargins(*((0, 0, 0, 0) if is_classic() else (sc(10), sc(8), sc(10), sc(6))))
+        ol.setSpacing(sc(6))
+        ol.addLayout(self._section_head(tr("Uscita"), None))
+        strips_out = QHBoxLayout()
+        self.bus_row = QHBoxLayout()
+        strips_out.addLayout(self.bus_row)
+        strips_out.addWidget(self.system)
+        strips_out.addWidget(self.master)
+        ol.addLayout(strips_out, 1)
         body = QHBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(sc(8))
         body.addWidget(self.splitter, 1)
-        self.bus_row = QHBoxLayout()
-        body.addLayout(self.bus_row)
-        body.addWidget(self.system)
-        body.addWidget(self.master)
+        body.addWidget(outputs)
 
         self.pin_btn = QPushButton("📌")
         self.pin_btn.setObjectName("bar")
@@ -5183,6 +5218,16 @@ class Mixer(QWidget):
         root.setSpacing(4 if is_classic() else sc(10))
         root.addLayout(bar)
         root.addLayout(body, 1)
+        self.status_labels = {}
+        status = QHBoxLayout()
+        status.setSpacing(sc(14))
+        for key in ("output", "preset", "ducking", "apps"):
+            lab = QLabel()
+            lab.setObjectName("status")
+            self.status_labels[key] = lab
+            status.addWidget(lab)
+        status.addStretch(1)
+        root.addLayout(status)
         self.apply_panel()
 
         self.tray = QSystemTrayIcon(QIcon(resource_path("icon.ico")), self)
@@ -5392,6 +5437,7 @@ class Mixer(QWidget):
         self.check_ads()
         self.track_device_volumes()
         self.sync_buses()
+        self.update_status()
         self.sync_mirrors()
         self.run_plugins()
 
@@ -6248,6 +6294,33 @@ class Mixer(QWidget):
         for key in [k for k in self._mirror_retry if k not in wanted]:
             del self._mirror_retry[key]
 
+    @staticmethod
+    def _section_head(title, info):
+        """Intestazione di un pannello: titolo e, accanto, un'informazione breve."""
+        head = QHBoxLayout()
+        head.setContentsMargins(sc(2), 0, sc(2), 0)
+        t = QLabel(title)
+        t.setObjectName("sectionTitle")
+        head.addWidget(t)
+        if info is not None:
+            head.addWidget(info)
+        head.addStretch(1)
+        return head
+
+    def update_status(self):
+        """Barra in basso: uscita di Windows, preset attivo, ducking e app che suonano."""
+        lab = self.status_labels
+        out = self.default_out[len(DEV_PREFIX):] if self.default_out else None
+        lab["output"].setText("\U0001F3A7  " + (self.device_name(out) if out else tr("nessuna uscita")))
+        lab["preset"].setText("\U0001F39B  " + (tr("Preset: {name}", name=self.active_preset)
+                                                if self.active_preset else tr("Nessun preset attivo")))
+        groups = [g for g in self.ducking.get("groups") or [] if g.get("enabled")]
+        lab["ducking"].setVisible(bool(self.ducking.get("enabled") and groups))
+        lab["ducking"].setText("\U0001F4C9  " + (tr("Ducking in azione") if self.guard.active
+                                                 else tr("Ducking pronto")))
+        playing = sum(1 for n in self.groups if not n.startswith(DEV_PREFIX))
+        lab["apps"].setText("\U0001F50A  " + tr("{n} app con audio", n=playing))
+
     def save_buses_later(self):
         self._bus_save_timer.start()
 
@@ -6589,6 +6662,7 @@ class Mixer(QWidget):
         """Mette i canali nel layout secondo l'ordine delle fonti."""
         wanted = [n for n in self.ordered_names()
                   if self.sources[n].get("visible") and n in self.strips]
+        self.mixer_count.setText(tr("{n} nel mixer", n=len(wanted)) if wanted else "")
         while self.row.count():
             self.row.takeAt(0)
         self.row.addWidget(self.hint)
@@ -6741,6 +6815,8 @@ class Mixer(QWidget):
     def refresh_preset_ui(self):
         """Dopo ogni modifica ai preset: aggiorna il menu della tray e la finestra Preset."""
         self.rebuild_tray_menu()
+        if hasattr(self, "status_labels"):
+            self.update_status()
         name = self.active_preset
         if name:
             short = name if len(name) <= 14 else name[:13] + "\u2026"

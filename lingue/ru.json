@@ -315,6 +315,15 @@
     "Informazioni": "О программе",
     "Abbassa alcune app mentre altre suonano.": "Приглушает одни приложения, пока играют другие.",
     "Volume massimo per app.": "Максимальная громкость для приложения.",
-    "Preset che si attivano da soli.": "Пресеты, которые включаются сами."
+    "Preset che si attivano da soli.": "Пресеты, которые включаются сами.",
+    "Mixer": "Микшер",
+    "Uscita": "Выход",
+    "nessuna uscita": "нет выхода",
+    "Preset: {name}": "Пресет: {name}",
+    "Nessun preset attivo": "Нет активного пресета",
+    "Ducking in azione": "Ducking работает",
+    "Ducking pronto": "Ducking готов",
+    "{n} app con audio": "приложений со звуком: {n}",
+    "{n} nel mixer": "в микшере: {n}"
   }
 }

@@ -315,6 +315,15 @@
     "Informazioni": "Info",
     "Abbassa alcune app mentre altre suonano.": "Senkt einige Apps ab, während andere spielen.",
     "Volume massimo per app.": "Höchstlautstärke pro App.",
-    "Preset che si attivano da soli.": "Presets, die sich von selbst einschalten."
+    "Preset che si attivano da soli.": "Presets, die sich von selbst einschalten.",
+    "Mixer": "Mixer",
+    "Uscita": "Ausgabe",
+    "nessuna uscita": "keine Ausgabe",
+    "Preset: {name}": "Preset: {name}",
+    "Nessun preset attivo": "Kein aktives Preset",
+    "Ducking in azione": "Ducking aktiv",
+    "Ducking pronto": "Ducking bereit",
+    "{n} app con audio": "{n} Apps mit Ton",
+    "{n} nel mixer": "{n} im Mixer"
   }
 }

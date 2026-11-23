@@ -315,6 +315,15 @@
     "Informazioni": "About",
     "Abbassa alcune app mentre altre suonano.": "Lowers some apps while others play.",
     "Volume massimo per app.": "Maximum volume per app.",
-    "Preset che si attivano da soli.": "Presets that turn on by themselves."
+    "Preset che si attivano da soli.": "Presets that turn on by themselves.",
+    "Mixer": "Mixer",
+    "Uscita": "Output",
+    "nessuna uscita": "no output",
+    "Preset: {name}": "Preset: {name}",
+    "Nessun preset attivo": "No active preset",
+    "Ducking in azione": "Ducking active",
+    "Ducking pronto": "Ducking ready",
+    "{n} app con audio": "{n} apps with audio",
+    "{n} nel mixer": "{n} in the mixer"
   }
 }
