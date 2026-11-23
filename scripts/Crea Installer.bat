@@ -52,6 +52,7 @@ if exist dist\portable rmdir /s /q dist\portable
 mkdir "%PORT%\lingue"
 copy /y dist\AudioMixer.exe "%PORT%\" >nul
 copy /y lingue\*.json "%PORT%\lingue\" >nul
+copy /y LICENSE "%PORT%\" >nul
 echo Versione portatile: le impostazioni vengono salvate nella cartella data qui accanto.> "%PORT%\portable.txt"
 powershell -NoProfile -Command "Compress-Archive -Force -Path '%PORT%' -DestinationPath 'release\AudioMixer_Portable_%VERSION%.zip'"
 

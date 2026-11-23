@@ -135,6 +135,7 @@ Section "$(SEC_MAIN)" SecMain
 
   SetOutPath "$INSTDIR"
   File "dist\${EXENAME}"
+  File "LICENSE"
   SetOutPath "$INSTDIR\lingue"
   File "lingue\*.*"
 
@@ -170,6 +171,7 @@ Section "Uninstall"
 
   SetShellVarContext all
   Delete "$INSTDIR\${EXENAME}"
+  Delete "$INSTDIR\LICENSE"
   RMDir /r "$INSTDIR\lingue"
   Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR"

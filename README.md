@@ -99,4 +99,12 @@ language. To add a language, copy `lingue/en.json`, translate the values and set
 
 ## License
 
-Copyright (c) 2026. All rights reserved. No license is granted yet.
+Copyright (C) 2026 DrP1n
+
+AudioMixer is free software: you can redistribute it and/or modify it under the terms of the
+[GNU General Public License v3.0](LICENSE) (or any later version). It comes with no warranty.
+
+## Contributing
+
+Issues and pull requests are welcome. Run both test files before sending a change, and add new
+UI text in Italian inside `tr(...)` with its translations in `lingue/`.

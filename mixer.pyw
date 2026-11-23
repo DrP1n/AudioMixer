@@ -2,6 +2,12 @@
 Mixer audio per app (stile OBS "Audio Monitor") - Windows 10/11
 Installazione:  pip install -r requirements.txt
 Avvio:          python mixer.pyw
+
+Copyright (C) 2026 DrP1n - https://github.com/DrP1n/AudioMixer
+Questo programma e' software libero: puoi ridistribuirlo e/o modificarlo secondo i termini
+della GNU General Public License versione 3, o (a tua scelta) qualsiasi versione successiva,
+pubblicata dalla Free Software Foundation. E' distribuito SENZA ALCUNA GARANZIA.
+Vedi il file LICENSE o https://www.gnu.org/licenses/.
 """
 import sys
 import os
@@ -1212,7 +1218,7 @@ class Bridge(QObject):
 
 
 APP_ID = "audiomixer-single-instance"
-APP_VERSION = "0.6.1"
+APP_VERSION = "0.6.2"
 # "utente/repository" su GitHub: con le release pubblicate li', il mixer avvisa delle versioni nuove
 UPDATE_REPO = "DrP1n/AudioMixer"
 
