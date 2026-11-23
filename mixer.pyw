@@ -1212,9 +1212,9 @@ class Bridge(QObject):
 
 
 APP_ID = "audiomixer-single-instance"
-APP_VERSION = "0.6.0"
+APP_VERSION = "0.6.1"
 # "utente/repository" su GitHub: con le release pubblicate li', il mixer avvisa delle versioni nuove
-UPDATE_REPO = ""
+UPDATE_REPO = "DrP1n/AudioMixer"
 
 
 def version_tuple(text):

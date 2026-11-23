@@ -23,16 +23,24 @@ Every app that plays sound gets its own channel with a fader, a level meter, mut
 - Fade in/out on mute, solo and preset changes
 - Strips with custom color, icon and width; quick search in the source list
 - User plugins (optional, off by default)
-- Themes, accent color, UI scale, quick guide on first start
+- Per-app volume up/down hotkeys, on-screen notice when a hotkey changes something
+- Optional: show new apps automatically, hide strips of closed apps
+- Tray icon shows when the microphone is muted
+- Themes, accent color, UI scale, guided tour on first start
 - Languages: Italian, English, German, Spanish, Russian
 
-## Install
+## Download
 
-- **Installer:** run `release\AudioMixer_Setup_<version>.exe`. Settings are stored in `%APPDATA%\AudioMixer`.
-- **Portable:** unzip `release\AudioMixer_Portable_<version>.zip` anywhere. The `portable.txt` file
+Get the latest version from the **[Releases page](https://github.com/DrP1n/AudioMixer/releases/latest)**:
+
+- **Installer:** `AudioMixer_Setup_<version>.exe`. Settings are stored in `%APPDATA%\AudioMixer`.
+- **Portable:** `AudioMixer_Portable_<version>.zip`, unzip it anywhere. The `portable.txt` file
   next to the exe makes it keep its settings in a `data\` folder beside it.
 
-The exe is not signed: Windows SmartScreen warns about it, and Smart App Control blocks it.
+The program checks for new releases at start and shows a tray message when one is available.
+
+The exe is not signed: Windows SmartScreen shows a warning (choose *More info* → *Run anyway*),
+and Smart App Control blocks it.
 
 ## Folders
 
