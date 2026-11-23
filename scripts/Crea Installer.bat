@@ -55,6 +55,12 @@ copy /y lingue\*.json "%PORT%\lingue\" >nul
 echo Versione portatile: le impostazioni vengono salvate nella cartella data qui accanto.> "%PORT%\portable.txt"
 powershell -NoProfile -Command "Compress-Archive -Force -Path '%PORT%' -DestinationPath 'release\AudioMixer_Portable_%VERSION%.zip'"
 
+rem pulizia: dist\ serviva solo a costruire; in release\ resta solo l'ultima versione
+rmdir /s /q dist
+for %%f in (release\AudioMixer_Setup_*.exe release\AudioMixer_Portable_*.zip) do (
+  if /i not "%%~nxf"=="AudioMixer_Setup_%VERSION%.exe" if /i not "%%~nxf"=="AudioMixer_Portable_%VERSION%.zip" del /q "%%f"
+)
+
 echo.
 echo Creati: release\AudioMixer_Setup_%VERSION%.exe
 echo         release\AudioMixer_Portable_%VERSION%.zip
