@@ -236,6 +236,13 @@
     "Importati: {p} preset, {r} regole, {g} gruppi di ducking.": "Importados: {p} presets, {r} reglas, {g} grupos de ducking.",
     "Non riesco ad aprire la cartella:\n{path}": "No puedo abrir la carpeta:\n{path}",
     "Duplica l'audio anche su": "Reproducir el audio también en",
-    "(nessun'altra uscita)": "(ninguna otra salida)"
+    "(nessun'altra uscita)": "(ninguna otra salida)",
+    "Aurora scuro": "Aurora oscuro",
+    "Aurora chiaro": "Aurora claro",
+    "Mezzanotte": "Medianoche",
+    "Synthwave": "Synthwave",
+    "Foresta": "Bosque",
+    "Classico": "Clásico",
+    "Classico chiaro": "Clásico claro"
   }
 }

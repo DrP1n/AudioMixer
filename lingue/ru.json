@@ -236,6 +236,13 @@
     "Importati: {p} preset, {r} regole, {g} gruppi di ducking.": "Импортировано: пресетов {p}, правил {r}, групп ducking {g}.",
     "Non riesco ad aprire la cartella:\n{path}": "Не удаётся открыть папку:\n{path}",
     "Duplica l'audio anche su": "Дублировать звук на",
-    "(nessun'altra uscita)": "(нет других выходов)"
+    "(nessun'altra uscita)": "(нет других выходов)",
+    "Aurora scuro": "Аврора тёмная",
+    "Aurora chiaro": "Аврора светлая",
+    "Mezzanotte": "Полночь",
+    "Synthwave": "Synthwave",
+    "Foresta": "Лес",
+    "Classico": "Классическая",
+    "Classico chiaro": "Классическая светлая"
   }
 }

@@ -206,7 +206,7 @@ def install_qt_translator(code):
 
 THEMES = {
     "dark": {
-        "label": "Scuro",
+        "label": "Aurora scuro", "style": "aurora", "accent": "#3b6fe0",
         "bg": "#0f1115", "text": "#e6e8ee", "strong": "#ffffff", "panel": "#171a21",
         "border": "#222631", "line": "#323848", "hover": "#1e222b", "raised": "#232733",
         "raised_hover": "#2c3141", "row_border": "#1b1e26", "row_hover": "#1c2029",
@@ -220,7 +220,7 @@ THEMES = {
         "duck": "#fb923c", "duck_bg": "#231910",
     },
     "light": {
-        "label": "Chiaro",
+        "label": "Aurora chiaro", "style": "aurora", "accent": "#3b6fe0",
         "bg": "#f1f3f7", "text": "#1c2030", "strong": "#000000", "panel": "#ffffff",
         "border": "#e2e5ec", "line": "#ccd2dc", "hover": "#eceff4", "raised": "#eceff4",
         "raised_hover": "#e0e4ec", "row_border": "#eceef2", "row_hover": "#e9ecf2",
@@ -233,8 +233,78 @@ THEMES = {
         "dim_g": "#b9dfc1", "dim_y": "#ecdfa0", "dim_r": "#eab8b5",
         "duck": "#ea580c", "duck_bg": "#fff1e6",
     },
+    "midnight": {
+        "label": "Mezzanotte", "style": "aurora", "accent": "#38bdf8",
+        "bg": "#0a0f1c", "text": "#e2e8f5", "strong": "#ffffff", "panel": "#111a2e",
+        "border": "#1c2740", "line": "#2b3a5c", "hover": "#16213a", "raised": "#1b2742",
+        "raised_hover": "#24345a", "row_border": "#131c30", "row_hover": "#17223b",
+        "toggle_bg": "#0d1424", "muted": "#8796b8", "input": "#0d1424",
+        "check_border": "#34456b", "danger": "#fb7185", "danger_bg": "#3a1424",
+        "solo": "#fcd34d", "solo_text": "#0a0f1c", "handle": "#ffffff", "handle_border": "#ffffff",
+        "eye_on": "#e2e8f5", "eye_off": "#4a5a80", "row_shown": "#e2e8f5",
+        "row_hidden": "#8796b8", "row_idle": "#4a5a80", "hint": "#6b7aa0",
+        "meter_text": "#4a5a80", "meter_track": "#1b2742",
+        "dim_g": "#1d5e2b", "dim_y": "#6e5d12", "dim_r": "#6e1f1c",
+        "duck": "#fb923c", "duck_bg": "#241a12",
+    },
+    "synthwave": {
+        "label": "Synthwave", "style": "aurora", "accent": "#e040fb",
+        "bg": "#120b1e", "text": "#f1e8ff", "strong": "#ffffff", "panel": "#1c1230",
+        "border": "#2a1c45", "line": "#3f2a66", "hover": "#22163b", "raised": "#2a1c48",
+        "raised_hover": "#36245c", "row_border": "#1a1129", "row_hover": "#241840",
+        "toggle_bg": "#150d24", "muted": "#a28fc9", "input": "#150d24",
+        "check_border": "#4a3478", "danger": "#ff4d8d", "danger_bg": "#3d1230",
+        "solo": "#ffd166", "solo_text": "#120b1e", "handle": "#ffffff", "handle_border": "#ffffff",
+        "eye_on": "#f1e8ff", "eye_off": "#5b4785", "row_shown": "#f1e8ff",
+        "row_hidden": "#a28fc9", "row_idle": "#5b4785", "hint": "#7d6aa8",
+        "meter_text": "#5b4785", "meter_track": "#2a1c48",
+        "dim_g": "#1d5e2b", "dim_y": "#6e5d12", "dim_r": "#6e1f1c",
+        "duck": "#ff9f43", "duck_bg": "#2b1a10",
+    },
+    "forest": {
+        "label": "Foresta", "style": "aurora", "accent": "#22c55e",
+        "bg": "#0c120f", "text": "#e3ece6", "strong": "#ffffff", "panel": "#131c17",
+        "border": "#1e2b24", "line": "#2d4035", "hover": "#18231d", "raised": "#1c2922",
+        "raised_hover": "#25362c", "row_border": "#121a15", "row_hover": "#17221c",
+        "toggle_bg": "#0f1612", "muted": "#86a091", "input": "#0f1612",
+        "check_border": "#34493d", "danger": "#f87171", "danger_bg": "#3a1616",
+        "solo": "#facc15", "solo_text": "#0c120f", "handle": "#ffffff", "handle_border": "#ffffff",
+        "eye_on": "#e3ece6", "eye_off": "#4a5f53", "row_shown": "#e3ece6",
+        "row_hidden": "#86a091", "row_idle": "#4a5f53", "hint": "#6a8475",
+        "meter_text": "#4a5f53", "meter_track": "#1c2922",
+        "dim_g": "#1d5e2b", "dim_y": "#6e5d12", "dim_r": "#6e1f1c",
+        "duck": "#fb923c", "duck_bg": "#231910",
+    },
+    "classic": {
+        "label": "Classico", "style": "classic", "accent": "#3b6fe0",
+        "bg": "#2b2e36", "text": "#dfe3ea", "strong": "#ffffff", "panel": "#31343d",
+        "border": "#23252b", "line": "#4a4f5c", "hover": "#3b3f4a", "raised": "#3a3e49",
+        "raised_hover": "#454a58", "row_border": "#262930", "row_hover": "#343844",
+        "toggle_bg": "#2f323b", "muted": "#9aa0ad", "input": "#1b1d23",
+        "check_border": "#5a5f6e", "danger": "#e5484d", "danger_bg": "#3a2226",
+        "solo": "#e0b422", "solo_text": "#1b1d23", "handle": "#ffffff", "handle_border": "#ffffff",
+        "eye_on": "#ffffff", "eye_off": "#6b7080", "row_shown": "#ffffff",
+        "row_hidden": "#8a90a0", "row_idle": "#5d6272", "hint": "#6b7080",
+        "meter_text": "#9aa0ad", "meter_track": "#23252b",
+        "dim_g": "#1d5e2b", "dim_y": "#6e5d12", "dim_r": "#6e1f1c",
+        "duck": "#f0883e", "duck_bg": "#3d3328",
+    },
+    "classic_light": {
+        "label": "Classico chiaro", "style": "classic", "accent": "#3b6fe0",
+        "bg": "#eceef2", "text": "#1f2330", "strong": "#000000", "panel": "#ffffff",
+        "border": "#c5c9d3", "line": "#aab0bd", "hover": "#e3e6ee", "raised": "#dde1ea",
+        "raised_hover": "#d2d7e2", "row_border": "#d5d9e2", "row_hover": "#e4e8f0",
+        "toggle_bg": "#e2e5ec", "muted": "#5a6072", "input": "#ffffff",
+        "check_border": "#8a90a0", "danger": "#d12f35", "danger_bg": "#fbe3e4",
+        "solo": "#e0b422", "solo_text": "#1b1d23", "handle": "#ffffff", "handle_border": "#8a90a0",
+        "eye_on": "#1f2330", "eye_off": "#9aa0ad", "row_shown": "#1f2330",
+        "row_hidden": "#5a6072", "row_idle": "#9aa0ad", "hint": "#6b7285",
+        "meter_text": "#555b6b", "meter_track": "#dde1ea",
+        "dim_g": "#b9dfc1", "dim_y": "#ecdfa0", "dim_r": "#eab8b5",
+        "duck": "#d9730d", "duck_bg": "#fff1e0",
+    },
     "contrast": {
-        "label": "Alto contrasto",
+        "label": "Alto contrasto", "style": "aurora", "accent": "#ffd400",
         "bg": "#000000", "text": "#ffffff", "strong": "#ffffff", "panel": "#000000",
         "border": "#ffffff", "line": "#ffffff", "hover": "#262626", "raised": "#1a1a1a",
         "raised_hover": "#333333", "row_border": "#808080", "row_hover": "#262626",
@@ -425,7 +495,85 @@ def build_style():
     values["arrow_down"] = _arrow_png("down", PALETTE["text"])
     values.update({f"p{n}": f"{sc(n)}px" for n in range(0, 41)})
     values["base_font"] = "" if UI["scale"] == 1.0 else f"font-size: {sc(12)}px;"
-    return Template(_STYLE_TEMPLATE).substitute(values)
+    template = _CLASSIC_TEMPLATE if is_classic() else _STYLE_TEMPLATE
+    return Template(template).substitute(values)
+
+
+def is_classic():
+    """Tema con l'aspetto delle versioni fino alla 0.4 (bordi squadrati, meter a blocchi)."""
+    return PALETTE.get("style") == "classic"
+
+
+# Aspetto fino alla 0.4.3, piu' le poche regole per i controlli arrivati dopo.
+_CLASSIC_TEMPLATE = """
+QWidget { background: ${bg}; color: ${text}; font-family: 'Segoe UI'; ${base_font} }
+QToolTip { background: ${panel}; color: ${text}; border: 1px solid ${line}; }
+QFrame#strip { background: ${panel}; border: 1px solid ${border}; }
+QFrame#strip QLabel { background: transparent; border: none; }
+QFrame#master { background: ${panel}; border: 1px solid ${accent}; }
+QFrame#master QLabel { background: transparent; border: none; }
+QLabel#name { font-weight: 600; font-size: ${p11}; }
+QLabel#value { color: ${muted}; font-size: ${p10}; }
+QLabel#appTitle { font-size: ${p13}; font-weight: 700; padding: 0 ${p4}; }
+QSlider::groove:vertical { background: ${accent}; width: ${p4}; border-radius: ${p2}; }
+QSlider::handle:vertical { background: ${handle}; border: 1px solid ${handle_border};
+                           height: ${p22}; width: ${p14}; margin: 0 -${p6}; border-radius: ${p6}; }
+QSlider::groove:horizontal { background: ${accent}; height: ${p4}; border-radius: ${p2}; }
+QSlider::handle:horizontal { background: ${handle}; border: 1px solid ${handle_border};
+                             width: ${p14}; height: ${p14}; margin: -${p6} 0; border-radius: ${p6}; }
+QPushButton { background: transparent; border: none; font-size: ${p16}; }
+QPushButton:checked { color: ${danger}; }
+QPushButton#key { font-size: ${p10}; border: 1px solid ${line};
+                  border-radius: ${p3}; padding: ${p3}; }
+QPushButton#key:hover { background: ${hover}; }
+QLabel#panelTitle { background: ${raised}; font-weight: 600; padding: ${p5} ${p8}; }
+QPushButton#panelTab { background: transparent; color: ${muted}; font-size: ${p12}; font-weight: 600;
+                       border: none; border-radius: 0; padding: ${p5} ${p8}; }
+QPushButton#panelTab:hover { background: ${row_hover}; color: ${strong}; }
+QPushButton#panelTab:checked { background: ${raised}; color: ${strong}; }
+QFrame#row { background: ${bg}; border-bottom: 1px solid ${row_border}; }
+QFrame#row:hover { background: ${row_hover}; }
+QFrame#row QLabel { background: transparent; }
+QFrame#strip:disabled { background: ${bg}; }
+QFrame#strip[ducked="true"] { background: ${duck_bg}; border: 1px solid ${duck}; }
+QPushButton#toggleFonti { background: ${toggle_bg}; color: ${muted}; font-size: ${p10};
+                          border-left: 1px solid ${border}; border-right: 1px solid ${border}; }
+QPushButton#toggleFonti:hover { background: ${raised}; color: ${strong}; }
+QSplitter::handle { background: ${border}; }
+QSplitter::handle:hover { background: ${accent}; }
+QMenu { background: ${panel}; border: 1px solid ${border}; padding: ${p3}; }
+QMenu::item { padding: ${p5} ${p26}; }
+QMenu::item:selected { background: ${accent}; color: ${on_accent}; }
+QDialog QPushButton { background: ${raised}; border: 1px solid ${line};
+                      border-radius: ${p3}; padding: ${p4} ${p16}; font-size: ${p12}; }
+QDialog QPushButton:hover { background: ${raised_hover}; }
+QLineEdit { background: ${input}; border: 1px solid ${line}; padding: ${p4}; }
+QComboBox { background: ${input}; border: 1px solid ${line}; padding: ${p3} ${p8}; }
+QSpinBox { background: ${input}; border: 1px solid ${line}; padding: ${p3}; padding-right: ${p20}; }
+QSpinBox::up-button { subcontrol-origin: border; subcontrol-position: top right; width: ${p16};
+                      border-left: 1px solid ${line}; background: ${raised}; }
+QSpinBox::down-button { subcontrol-origin: border; subcontrol-position: bottom right; width: ${p16};
+                        border-left: 1px solid ${line}; background: ${raised}; }
+QSpinBox::up-button:hover, QSpinBox::down-button:hover { background: ${raised_hover}; }
+QSpinBox::up-arrow { image: url("${arrow_up}"); width: ${p9}; height: ${p6}; }
+QSpinBox::down-arrow { image: url("${arrow_down}"); width: ${p9}; height: ${p6}; }
+QComboBox QAbstractItemView { background: ${panel}; border: 1px solid ${line};
+                              selection-background-color: ${accent}; selection-color: ${on_accent}; }
+QPushButton#solo { font-size: ${p11}; font-weight: 700; border: 1px solid ${line};
+                   border-radius: ${p3}; min-width: ${p22}; padding: ${p2} ${p4}; }
+QPushButton#solo:checked { background: ${solo}; color: ${solo_text}; border-color: ${solo}; }
+QPushButton#bar, QPushButton#preset { font-size: ${p14}; border: 1px solid transparent;
+                  border-radius: ${p3}; padding: ${p2} ${p7}; }
+QPushButton#bar:hover, QPushButton#preset:hover { background: ${raised}; }
+QPushButton#bar:checked { background: ${accent}; color: ${on_accent}; }
+QCheckBox::indicator { width: ${p14}; height: ${p14}; border: 1px solid ${check_border};
+                       background: ${input}; border-radius: ${p2}; }
+QCheckBox::indicator:checked { background: ${accent}; border-color: ${accent}; }
+QTabWidget::pane { border: 1px solid ${border}; }
+QTabBar::tab { padding: ${p6} ${p14}; background: ${panel}; }
+QTabBar::tab:selected { background: ${accent}; color: ${on_accent}; }
+QFrame#dropLine { background: ${accent}; border: none; }
+"""
 
 
 configure_appearance("dark", DEFAULT_ACCENT, 100)
@@ -996,7 +1144,7 @@ class Bridge(QObject):
 
 
 APP_ID = "audiomixer-single-instance"
-APP_VERSION = "0.5.0"
+APP_VERSION = "0.5.1"
 # "utente/repository" su GitHub: con le release pubblicate li', il mixer avvisa delle versioni nuove
 UPDATE_REPO = ""
 
@@ -1089,9 +1237,14 @@ def confirm(parent, title, text, ok_text=None):
     return box.clickedButton() == yes
 
 
+def display_case(text):
+    """Nomi in maiuscolo col tema Classico, altrimenti solo l'iniziale."""
+    return text.upper() if is_classic() else text[:1].upper() + text[1:]
+
+
 def wrap_name(name):
     """Iniziale maiuscola, con a capo possibile anche dentro i nomi molto lunghi."""
-    name = name[:1].upper() + name[1:]
+    name = display_case(name)
     return " ".join("\u200b".join(w) if len(w) > 12 else w for w in name.split(" "))
 
 
@@ -1178,8 +1331,8 @@ class Meter(QWidget):
         self.hold_ticks = [0, 0]
 
     def apply_scale(self):
-        self.BAR_W = sc(6)
-        self.GAP = sc(3)
+        self.BAR_W = sc(5) if is_classic() else sc(6)
+        self.GAP = 1 if is_classic() else sc(3)
         self.setFixedWidth(sc(38))
         self.setMinimumHeight(sc(80))
         self.update()
@@ -1198,7 +1351,10 @@ class Meter(QWidget):
 
     def paintEvent(self, _):
         """Due barre arrotondate: binario scuro, livello con sfumatura verde-giallo-rosso,
-        tacca del picco, e una scala in dB leggera accanto."""
+        tacca del picco, e una scala in dB leggera accanto. Col tema Classico: barre a blocchi."""
+        if is_classic():
+            self._paint_classic()
+            return
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         w, h = self.width(), self.height()
@@ -1239,6 +1395,44 @@ class Meter(QWidget):
         for db in range(0, -61, -step):
             yy = y(db)
             p.drawText(QRectF(bars_w + sc(4), yy - sc(6), w - bars_w - sc(4), sc(12)),
+                       Qt.AlignVCenter | Qt.AlignLeft, str(db))
+
+
+    def _paint_classic(self):
+        """Il meter delle versioni fino alla 0.4: tre zone colorate a blocchi e scala ogni 5 dB."""
+        p = QPainter(self)
+        w, h = self.width(), self.height()
+        m = sc(7)
+        dims = (PALETTE["dim_g"], PALETTE["dim_y"], PALETTE["dim_r"])
+        span = max(1, h - 2 * m)
+        bars_w = 2 * self.BAR_W + self.GAP
+
+        def y(db):
+            return m + (-max(-60.0, min(0.0, db))) / 60 * span
+
+        for i in range(2):
+            x = i * (self.BAR_W + self.GAP)
+            for zi, (lo, hi, _dim, bright) in enumerate(self.ZONES):
+                y_lo, y_hi = y(lo), y(hi)
+                p.fillRect(QRectF(x, y_hi, self.BAR_W, y_lo - y_hi), QColor(dims[zi]))
+                t = max(y(self.db[i]), y_hi)
+                if t < y_lo:
+                    p.fillRect(QRectF(x, t, self.BAR_W, y_lo - t), QColor(bright))
+            if self.hold[i] > -60:
+                col = next((b for lo, hi, d, b in self.ZONES if self.hold[i] <= hi), self.ZONES[-1][3])
+                p.setPen(QPen(QColor(col), 2))
+                yh = int(y(self.hold[i]))
+                p.drawLine(x, yh, x + self.BAR_W, yh)
+
+        step = 5 if span / 12 >= sc(13) else 10
+        f = p.font()
+        f.setPixelSize(sc(9))
+        p.setFont(f)
+        p.setPen(QColor(PALETTE["meter_text"]))
+        for db in range(0, -61, -step):
+            yy = y(db)
+            p.drawLine(bars_w, int(yy), bars_w + sc(3), int(yy))
+            p.drawText(QRectF(bars_w + sc(5), yy - sc(6), w - bars_w - sc(5), sc(12)),
                        Qt.AlignVCenter | Qt.AlignLeft, str(db))
 
 
@@ -2975,7 +3169,7 @@ class SourceRow(QFrame):
         self.on_delete = on_delete
         self.active = True
         self.default = False
-        self._title = (title or name)[:1].upper() + (title or name)[1:]
+        self._title = display_case(title or name)
 
         self.icon = QLabel()
         self.icon.setAlignment(Qt.AlignCenter)
@@ -3007,7 +3201,7 @@ class SourceRow(QFrame):
         self.label._elide()
 
     def set_title(self, text):
-        self._title = text[:1].upper() + text[1:]
+        self._title = display_case(text)
         self.label.setFullText(self._title + ("  \u2605" if self.default else ""))
 
     def set_default(self, default):
@@ -3185,8 +3379,7 @@ class SettingsDialog(QDialog):
         for key, th in THEMES.items():
             self.theme_box.addItem(tr(th["label"]), key)
         self.theme_box.setCurrentIndex(max(0, self.theme_box.findData(mixer.settings.get("theme"))))
-        self.theme_box.currentIndexChanged.connect(
-            lambda i: mixer.change_appearance(theme=self.theme_box.itemData(i)))
+        self.theme_box.currentIndexChanged.connect(self.on_theme)
         theme_row.addWidget(self.theme_box)
         al.addLayout(theme_row)
 
@@ -3509,6 +3702,12 @@ class SettingsDialog(QDialog):
                    "border-radius: 4px; padding: 0px; min-width: 0px;")
             btn.setStyleSheet("QPushButton { " + css + " } QPushButton:hover { " + css + " }")
         self.scale_label.setText(f"{self.scale_slider.value()}%")
+
+    def on_theme(self, index):
+        """Un preset di tema porta con se' il suo colore d'accento (poi lo si puo' cambiare)."""
+        theme = self.theme_box.itemData(index)
+        self.mixer.change_appearance(theme=theme, accent=THEMES.get(theme, {}).get("accent"))
+        self.refresh_look()
 
     def pick_accent(self, color):
         self.mixer.change_appearance(accent=color)
@@ -4632,8 +4831,9 @@ class Mixer(QWidget):
         bar.addWidget(self.settings_btn)
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(sc(12), sc(10), sc(12), sc(12))
-        root.setSpacing(sc(10))
+        root.setContentsMargins(*((6, 6, 6, 6) if is_classic() else
+                                  (sc(12), sc(10), sc(12), sc(12))))
+        root.setSpacing(4 if is_classic() else sc(10))
         root.addLayout(bar)
         root.addLayout(body, 1)
         self.apply_panel()
@@ -5328,9 +5528,17 @@ class Mixer(QWidget):
         QApplication.instance().setStyleSheet(build_style())
         for w in list(self.strips.values()) + list(self.bus_strips.values()) + [self.master, self.system]:
             w.apply_scale()
-        for row in self.rows.values():
+        for name, row in self.rows.items():
+            row.set_title(self.display_name(name))
             row.apply_scale()
             row.refresh_style()
+        for name, strip in self.strips.items():
+            strip.set_title(self.display_name(name))
+        self.system.retranslate()
+        classic = is_classic()
+        self.layout().setContentsMargins(*((6, 6, 6, 6) if classic else
+                                           (sc(12), sc(10), sc(12), sc(12))))
+        self.layout().setSpacing(4 if classic else sc(10))
         self.hint.setStyleSheet(f"color: {PALETTE['hint']};")
         self.apply_panel()
         self._save_timer.start()
