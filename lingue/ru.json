@@ -266,6 +266,13 @@
     "Tiene il mixer sopra le altre finestre.": "Держит микшер поверх других окон.",
     "Temi, ducking, limiti, automazioni, dissolvenza, volume di sicurezza, mute delle pubblicità, plugin e avvio con Windows.": "Темы, ducking, пределы, автоматизация, плавный переход, безопасная громкость, выключение рекламы, плагины и запуск с Windows.",
     "Tutto qui!": "Вот и всё!",
-    "Buon ascolto. Il tour è sempre in Impostazioni → Guida rapida.": "Приятного прослушивания. Тур всегда доступен в Настройки → Краткое руководство."
+    "Buon ascolto. Il tour è sempre in Impostazioni → Guida rapida.": "Приятного прослушивания. Тур всегда доступен в Настройки → Краткое руководство.",
+    "Larghezza delle strisce": "Ширина полос",
+    "Vale per tutte le strisce e toglie le larghezze scelte una per una": "Применяется ко всем полосам и сбрасывает ширину, выбранную для каждой отдельно",
+    "Tutte le strisce": "Все полосы",
+    "Ripristina striscia…": "Сбросить полосу…",
+    "Ripristina striscia": "Сбросить полосу",
+    "Riportare «{name}» com'era all'inizio?\n\nVengono tolti colore, icona, larghezza, limite di volume, uscita scelta, gruppo, controlli MIDI e volumi ricordati per dispositivo. Volume, mute e tasto rapido restano.": "Вернуть «{name}» в исходное состояние?\n\nБудут удалены цвет, значок, ширина, предел громкости, выбранный вывод, группа, управление MIDI и запомненная громкость для устройств. Громкость, выключение звука и горячая клавиша останутся.",
+    "Ripristina": "Сбросить"
   }
 }

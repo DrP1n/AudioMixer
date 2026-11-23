@@ -266,6 +266,13 @@
     "Tiene il mixer sopra le altre finestre.": "Mantiene el mezclador encima de las demás ventanas.",
     "Temi, ducking, limiti, automazioni, dissolvenza, volume di sicurezza, mute delle pubblicità, plugin e avvio con Windows.": "Temas, ducking, límites, automatizaciones, fundido, volumen de seguridad, silenciar anuncios, plugins e inicio con Windows.",
     "Tutto qui!": "¡Eso es todo!",
-    "Buon ascolto. Il tour è sempre in Impostazioni → Guida rapida.": "Disfruta. El tour está siempre en Ajustes → Guía rápida."
+    "Buon ascolto. Il tour è sempre in Impostazioni → Guida rapida.": "Disfruta. El tour está siempre en Ajustes → Guía rápida.",
+    "Larghezza delle strisce": "Ancho de los canales",
+    "Vale per tutte le strisce e toglie le larghezze scelte una per una": "Se aplica a todos los canales y quita los anchos elegidos uno a uno",
+    "Tutte le strisce": "Todos los canales",
+    "Ripristina striscia…": "Restablecer canal…",
+    "Ripristina striscia": "Restablecer canal",
+    "Riportare «{name}» com'era all'inizio?\n\nVengono tolti colore, icona, larghezza, limite di volume, uscita scelta, gruppo, controlli MIDI e volumi ricordati per dispositivo. Volume, mute e tasto rapido restano.": "¿Devolver «{name}» a como estaba al principio?\n\nSe quitan color, icono, ancho, límite de volumen, salida elegida, grupo, controles MIDI y volúmenes recordados por dispositivo. Volumen, silencio y tecla rápida se mantienen.",
+    "Ripristina": "Restablecer"
   }
 }

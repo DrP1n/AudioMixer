@@ -266,6 +266,13 @@
     "Tiene il mixer sopra le altre finestre.": "Keeps the mixer above other windows.",
     "Temi, ducking, limiti, automazioni, dissolvenza, volume di sicurezza, mute delle pubblicità, plugin e avvio con Windows.": "Themes, ducking, limits, automations, fade, safety volume, ad muting, plugins and start with Windows.",
     "Tutto qui!": "That's it!",
-    "Buon ascolto. Il tour è sempre in Impostazioni → Guida rapida.": "Enjoy. The tour is always in Settings → Quick guide."
+    "Buon ascolto. Il tour è sempre in Impostazioni → Guida rapida.": "Enjoy. The tour is always in Settings → Quick guide.",
+    "Larghezza delle strisce": "Strip width",
+    "Vale per tutte le strisce e toglie le larghezze scelte una per una": "Applies to all strips and removes the widths chosen one by one",
+    "Tutte le strisce": "All strips",
+    "Ripristina striscia…": "Reset strip…",
+    "Ripristina striscia": "Reset strip",
+    "Riportare «{name}» com'era all'inizio?\n\nVengono tolti colore, icona, larghezza, limite di volume, uscita scelta, gruppo, controlli MIDI e volumi ricordati per dispositivo. Volume, mute e tasto rapido restano.": "Reset “{name}” to how it was at the start?\n\nColor, icon, width, volume limit, chosen output, group, MIDI controls and per-device remembered volumes are removed. Volume, mute and hotkey stay.",
+    "Ripristina": "Reset"
   }
 }

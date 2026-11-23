@@ -386,7 +386,7 @@ QSlider::handle:horizontal { background: ${handle}; border: ${p3} solid ${accent
 QSlider:disabled::add-page:vertical { background: ${line}; }
 QPushButton { background: transparent; border: none; font-size: ${p16}; }
 QPushButton:checked { color: ${danger}; }
-QPushButton#mute { background: ${raised}; border-radius: ${p8}; padding: ${p3} ${p8}; font-size: ${p14}; }
+QPushButton#mute { background: ${raised}; border-radius: ${p8}; padding: ${p3} ${p6}; font-size: ${p14}; }
 QPushButton#mute:hover { background: ${raised_hover}; }
 QPushButton#mute:checked { background: ${danger_bg}; color: ${danger}; }
 QPushButton#key { font-size: ${p10}; color: ${muted}; border: 1px dashed ${line};
@@ -439,7 +439,7 @@ QSpinBox::down-arrow { image: url("${arrow_down}"); width: ${p9}; height: ${p6};
 QComboBox QAbstractItemView { background: ${panel}; border: 1px solid ${line};
                               selection-background-color: ${accent}; selection-color: ${on_accent}; }
 QPushButton#solo { font-size: ${p11}; font-weight: 700; background: ${raised}; color: ${muted};
-                   border-radius: ${p8}; min-width: ${p22}; padding: ${p4} ${p8}; }
+                   border-radius: ${p8}; min-width: ${p16}; padding: ${p4} ${p6}; }
 QPushButton#solo:hover { background: ${raised_hover}; color: ${text}; }
 QPushButton#solo:checked { background: ${solo}; color: ${solo_text}; }
 QPushButton#bar { font-size: ${p14}; border: none; border-radius: ${p8}; padding: ${p4} ${p10}; }
@@ -670,6 +670,7 @@ DEFAULT_SETTINGS = {
     "per_device_volume": False,
     "plugins": False,
     "tutorial_done": False,
+    "strip_width": 104,
 }
 
 
@@ -692,6 +693,7 @@ def load_settings():
     data["ui_scale"] = max(SCALE_MIN, min(SCALE_MAX, data["ui_scale"]))
     data["fade_ms"] = max(0, min(3000, data["fade_ms"]))
     data["safe_volume"] = max(0, min(100, data["safe_volume"]))
+    data["strip_width"] = max(60, min(200, data["strip_width"]))
     if data["language"] != "auto" and not (isinstance(data["language"], str)
                                            and LANG_CODE_RE.fullmatch(data["language"])):
         data["language"] = "auto"
@@ -1144,7 +1146,7 @@ class Bridge(QObject):
 
 
 APP_ID = "audiomixer-single-instance"
-APP_VERSION = "0.5.2"
+APP_VERSION = "0.5.3"
 # "utente/repository" su GitHub: con le release pubblicate li', il mixer avvisa delle versioni nuove
 UPDATE_REPO = ""
 
@@ -1330,10 +1332,18 @@ class Meter(QWidget):
         self.hold = [-60.0, -60.0]
         self.hold_ticks = [0, 0]
 
+    compact = False
+
+    def set_compact(self, flag):
+        """Striscia stretta: solo le barre, senza la scala in dB accanto."""
+        if flag != self.compact:
+            self.compact = flag
+            self.apply_scale()
+
     def apply_scale(self):
         self.BAR_W = sc(5) if is_classic() else sc(6)
         self.GAP = 1 if is_classic() else sc(3)
-        self.setFixedWidth(sc(38))
+        self.setFixedWidth(2 * self.BAR_W + self.GAP if self.compact else sc(38))
         self.setMinimumHeight(sc(80))
         self.update()
 
@@ -1387,6 +1397,8 @@ class Meter(QWidget):
                 col = next((b for lo, hi, d, b in self.ZONES if self.hold[i] <= hi), self.ZONES[-1][3])
                 p.fillRect(QRectF(x, y(self.hold[i]) - 1, self.BAR_W, 2), QColor(col))
 
+        if self.compact:
+            return
         step = 10 if span / 6 >= sc(14) else 20
         f = p.font()
         f.setPixelSize(sc(9))
@@ -1424,6 +1436,8 @@ class Meter(QWidget):
                 yh = int(y(self.hold[i]))
                 p.drawLine(x, yh, x + self.BAR_W, yh)
 
+        if self.compact:
+            return
         step = 5 if span / 12 >= sc(13) else 10
         f = p.font()
         f.setPixelSize(sc(9))
@@ -1850,7 +1864,7 @@ class Strip(QFrame):
         self.name = name
         self.on_menu = on_menu
         self.sessions, self.meters = [], []
-        self.width_px = STRIP_W
+        self.width_px = UI.get("strip_w", STRIP_W)
 
         self.icon_label = QLabel()
         self.icon_label.setAlignment(Qt.AlignCenter)
@@ -1914,12 +1928,20 @@ class Strip(QFrame):
             self.icon_label.setPixmap(QPixmap())
             self.icon_label.setText("🔈")
         width = info.get("width")
-        self.width_px = width if isinstance(width, int) and 60 <= width <= 200 else STRIP_W
+        self.width_px = (width if isinstance(width, int) and 60 <= width <= 200
+                         else UI.get("strip_w", STRIP_W))
         self.apply_scale()
 
     def apply_scale(self):
         """Misure che dipendono dalla scala dell'interfaccia."""
         self.setFixedWidth(sc(self.width_px))
+        compact = self.width_px < 96
+        self.meter.set_compact(compact)
+        m = sc(4) if compact else sc(8)
+        self.layout().setContentsMargins(m, sc(10), m, sc(8))
+        for btn in (self.mute, self.solo):
+            btn.setMaximumWidth(sc(32) if compact else 16777215)
+        self.set_key(self._key)
         self.icon_label.setFixedHeight(sc(36))
         self.label.setFixedHeight(sc(32))
         if self._icon is not None:
@@ -1955,6 +1977,11 @@ class Strip(QFrame):
         self.label.setText(wrap_name(text))
 
     def set_key(self, key):
+        self._key = key
+        if self.width_px < 96:  # striscia stretta: solo l'icona, il resto nel suggerimento
+            self.key_btn.setText("⌨")
+            self.key_btn.setToolTip((key.upper() + "\n" if key else "") + tr("Clic per assegnare un tasto (Esc = rimuovi)"))
+            return
         self.key_btn.setText(f"⌨ {key.upper()}" if key else "⌨ " + tr("Assegna"))
 
     def set_sessions(self, sessions):
@@ -2396,7 +2423,8 @@ def cli_set_default_device(result_path, device_id):
 
 def _scale_fixed_strip(w):
     """Misure delle strip fisse (AUDIO PC e Suoni di sistema) secondo la scala."""
-    w.setFixedWidth(sc(104))
+    w.setFixedWidth(sc(UI.get("strip_w", 104)))
+    w.meter.set_compact(UI.get("strip_w", 104) < 96)
     w.icon.setFixedHeight(sc(36))
     w.label.setFixedHeight(sc(32))
     w._spacer.changeSize(0, sc(30), QSizePolicy.Minimum, QSizePolicy.Fixed)
@@ -3416,6 +3444,26 @@ class SettingsDialog(QDialog):
                                    timeout=lambda: mixer.change_appearance(
                                        scale=self.scale_slider.value()))
         al.addWidget(self.scale_slider)
+
+        width_row = QHBoxLayout()
+        width_row.addWidget(QLabel(tr("Larghezza delle strisce")))
+        width_row.addStretch(1)
+        width_label = QLabel()
+        width_row.addWidget(width_label)
+        al.addLayout(width_row)
+        width_slider = QSlider(Qt.Horizontal)
+        width_slider.setRange(70, 180)
+        width_slider.setSingleStep(5)
+        width_slider.setPageStep(10)
+        width_slider.setValue(int(mixer.settings.get("strip_width", STRIP_W)))
+        width_label.setText(f"{width_slider.value()} px")
+        width_slider.setToolTip(tr("Vale per tutte le strisce e toglie le larghezze scelte "
+                                   "una per una"))
+        width_timer = QTimer(self, singleShot=True, interval=200,
+                             timeout=lambda: mixer.set_strip_width_all(width_slider.value()))
+        width_slider.valueChanged.connect(
+            lambda v: (width_label.setText(f"{v} px"), width_timer.start()))
+        al.addWidget(width_slider)
         reset = QPushButton(tr("Ripristina aspetto"))
         reset.clicked.connect(self.reset_look)
         al.addWidget(reset, 0, Qt.AlignLeft)
@@ -4777,6 +4825,7 @@ class Mixer(QWidget):
             save_sources(self.sources)
         self.pending_reset.discard(SYSTEM_NAME)
         self.settings = load_settings()
+        UI["strip_w"] = self.settings["strip_width"]
         configure_appearance(self.settings["theme"], self.settings["accent"],
                              self.settings["ui_scale"])
         global FADER
@@ -5846,12 +5895,22 @@ class Mixer(QWidget):
         look_actions = {look.addAction(tr("Colore…")): "color",
                         look.addAction(tr("Icona…")): "icon"}
         wsub = look.addMenu(tr("Larghezza"))
-        now_w = self.sources.get(name, {}).get("width", STRIP_W)
-        for label, w in ((tr("Stretta"), 80), (tr("Normale"), STRIP_W), (tr("Larga"), 140)):
+        all_w = self.settings.get("strip_width", STRIP_W)
+        now_w = self.sources.get(name, {}).get("width", all_w)
+        sizes = ((tr("Stretta"), 80), (tr("Normale"), STRIP_W), (tr("Larga"), 140))
+        for label, w in sizes:
             act = wsub.addAction(label)
             act.setCheckable(True)
             act.setChecked(now_w == w)
             look_actions[act] = ("width", w)
+        wsub.addSeparator()
+        every = wsub.addMenu(tr("Tutte le strisce"))
+        width_all = {}
+        for label, w in sizes:
+            act = every.addAction(label)
+            act.setCheckable(True)
+            act.setChecked(all_w == w)
+            width_all[act] = w
         look.addSeparator()
         look_actions[look.addAction(tr("Ripristina aspetto"))] = "reset"
         bus_actions = {}
@@ -5869,7 +5928,16 @@ class Mixer(QWidget):
         bound = [k for k, v in self.midi_bindings.items() if v == name]
         midi_clear = menu.addAction(tr("Togli controlli MIDI ({n})", n=len(bound)))
         midi_clear.setEnabled(bool(bound))
+        menu.addSeparator()
+        reset = menu.addAction(tr("Ripristina striscia…"))
+        reset.setEnabled(self.strip_customized(name))
         chosen = menu.exec(pos)
+        if chosen in width_all:
+            self.set_strip_width_all(width_all[chosen])
+            return
+        if chosen == reset:
+            self.reset_strip(name)
+            return
         if chosen == midi_learn:
             self.start_midi_learn(name)
             return
@@ -6073,6 +6141,64 @@ class Mixer(QWidget):
         self.buses = [b for b in self.buses if b["id"] != bus_id]
         save_buses(self.buses)
         self.sync_buses()
+
+    STRIP_KEYS = ("color", "icon", "width", "max", "output", "dev_volumes")
+
+    def strip_customized(self, name):
+        info = self.sources.get(name, {})
+        return (any(k in info for k in self.STRIP_KEYS) or self.bus_of(name) is not None
+                or name in self.midi_bindings.values())
+
+    def reset_strip(self, name):
+        """Riporta una striscia com'era all'inizio: aspetto, limite di volume, uscita di Windows,
+        nessun gruppo, nessun controllo MIDI, volumi per dispositivo dimenticati. Volume, mute e
+        tasto rapido restano quelli di adesso."""
+        if not confirm(self, tr("Ripristina striscia"),
+                       tr("Riportare «{name}» com'era all'inizio?\n\nVengono tolti colore, icona, "
+                          "larghezza, limite di volume, uscita scelta, gruppo, controlli MIDI e "
+                          "volumi ricordati per dispositivo. Volume, mute e tasto rapido restano.",
+                          name=self.display_name(name)), tr("Ripristina")):
+            return
+        info = self.sources.get(name)
+        if info is None:
+            return
+        had_output = bool(info.get("output"))
+        for k in self.STRIP_KEYS:
+            if k != "output":
+                info.pop(k, None)
+        save_sources(self.sources)
+        if self.bus_of(name) is not None:
+            self.assign_bus(name, None)
+        for k in [k for k, v in self.midi_bindings.items() if v == name]:
+            del self.midi_bindings[k]
+        save_midi(self.midi_bindings)
+        if had_output:
+            self.set_output(name, None, silent=True)
+        strip = self.strips.get(name)
+        if strip is not None:
+            strip.customize(info)
+            strip.set_limit(100)
+        self.layout_strips()
+
+    def set_strip_width_all(self, width):
+        """Stessa larghezza per tutte le strisce: diventa quella normale e toglie quelle scelte
+        una per una."""
+        width = max(60, min(200, int(width)))
+        self.settings["strip_width"] = width
+        UI["strip_w"] = width
+        save_settings(self.settings)
+        for info in self.sources.values():
+            info.pop("width", None)
+        save_sources(self.sources)
+        for name, strip in self.strips.items():
+            if isinstance(strip, DeviceStrip):
+                strip.width_px = width
+                strip.apply_scale()
+            else:
+                strip.customize(self.sources.get(name, {}))
+        for w in list(self.bus_strips.values()) + [self.master, self.system]:
+            w.apply_scale()
+        self.layout_strips()
 
     def customize_strip(self, name, what):
         """Colore, icona e larghezza scelti a mano per una striscia (punto 12)."""

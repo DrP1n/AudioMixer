@@ -266,6 +266,13 @@
     "Tiene il mixer sopra le altre finestre.": "Hält den Mixer über anderen Fenstern.",
     "Temi, ducking, limiti, automazioni, dissolvenza, volume di sicurezza, mute delle pubblicità, plugin e avvio con Windows.": "Designs, Ducking, Grenzen, Automatisierungen, Überblendung, Sicherheitslautstärke, Werbung stummschalten, Plugins und Start mit Windows.",
     "Tutto qui!": "Das war's!",
-    "Buon ascolto. Il tour è sempre in Impostazioni → Guida rapida.": "Viel Spaß. Die Tour findest du immer unter Einstellungen → Kurzanleitung."
+    "Buon ascolto. Il tour è sempre in Impostazioni → Guida rapida.": "Viel Spaß. Die Tour findest du immer unter Einstellungen → Kurzanleitung.",
+    "Larghezza delle strisce": "Kanalbreite",
+    "Vale per tutte le strisce e toglie le larghezze scelte una per una": "Gilt für alle Kanäle und entfernt einzeln gewählte Breiten",
+    "Tutte le strisce": "Alle Kanäle",
+    "Ripristina striscia…": "Kanal zurücksetzen…",
+    "Ripristina striscia": "Kanal zurücksetzen",
+    "Riportare «{name}» com'era all'inizio?\n\nVengono tolti colore, icona, larghezza, limite di volume, uscita scelta, gruppo, controlli MIDI e volumi ricordati per dispositivo. Volume, mute e tasto rapido restano.": "„{name}“ auf den Anfangszustand zurücksetzen?\n\nFarbe, Symbol, Breite, Lautstärkegrenze, gewählte Ausgabe, Gruppe, MIDI-Steuerungen und pro Gerät gemerkte Lautstärken werden entfernt. Lautstärke, Stummschaltung und Taste bleiben.",
+    "Ripristina": "Zurücksetzen"
   }
 }
