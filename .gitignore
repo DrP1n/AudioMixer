@@ -1,5 +1,6 @@
 # build output, recreated by the .bat files
 *.exe
+release/
 build/
 dist/
 *.spec

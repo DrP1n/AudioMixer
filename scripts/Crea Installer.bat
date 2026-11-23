@@ -34,6 +34,7 @@ set "VERSION=%VERSION: =%"
 set "VERSION=%VERSION:"=%"
 
 if not exist release mkdir release
+call :sign "dist\AudioMixer.exe"
 rem /NOCD: i percorsi in Installer.nsi partono dalla cartella del progetto, non da scripts\
 "%MAKENSIS%" /NOCD /DVERSION=%VERSION% scripts\Installer.nsi
 if errorlevel 1 (
@@ -43,6 +44,26 @@ if errorlevel 1 (
   exit /b 1
 )
 
+call :sign "release\AudioMixer_Setup_%VERSION%.exe"
+
+rem versione portatile: exe + lingue + portable.txt (le impostazioni restano nella cartella data\)
+set "PORT=dist\portable\AudioMixer"
+if exist dist\portable rmdir /s /q dist\portable
+mkdir "%PORT%\lingue"
+copy /y dist\AudioMixer.exe "%PORT%\" >nul
+copy /y lingue\*.json "%PORT%\lingue\" >nul
+echo Versione portatile: le impostazioni vengono salvate nella cartella data qui accanto.> "%PORT%\portable.txt"
+powershell -NoProfile -Command "Compress-Archive -Force -Path '%PORT%' -DestinationPath 'release\AudioMixer_Portable_%VERSION%.zip'"
+
 echo.
-echo Creato: release\AudioMixer_Setup_%VERSION%.exe
+echo Creati: release\AudioMixer_Setup_%VERSION%.exe
+echo         release\AudioMixer_Portable_%VERSION%.zip
 pause
+exit /b 0
+
+rem Firma un file se e' impostato AUDIOMIXER_PFX (certificato .pfx) e signtool e' nel PATH.
+rem Senza firma, Smart App Control e SmartScreen avvisano o bloccano il programma.
+:sign
+if not defined AUDIOMIXER_PFX exit /b 0
+signtool sign /f "%AUDIOMIXER_PFX%" /p "%AUDIOMIXER_PFX_PASSWORD%" /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 %1
+exit /b 0

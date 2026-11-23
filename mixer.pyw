@@ -20,16 +20,16 @@ from ctypes import c_float, c_uint32, POINTER, HRESULT
 import keyboard
 import psutil
 from PySide6.QtCore import (Qt, QTimer, QRectF, QFileInfo, QObject, Signal, QByteArray, QPointF,
-                            QPoint, QMimeData, QLocale, QTranslator, QLibraryInfo, QTime)
+                            QPoint, QMimeData, QLocale, QTranslator, QLibraryInfo, QTime, QUrl)
 from PySide6.QtGui import (QPainter, QColor, QPen, QIcon, QGuiApplication,
-                           QDrag, QCursor, QPixmap, QImage, QPolygonF)
+                           QDrag, QCursor, QPixmap, QImage, QPolygonF, QDesktopServices)
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (
     QApplication, QWidget, QFrame, QVBoxLayout, QHBoxLayout,
     QLabel, QSlider, QPushButton, QScrollArea, QFileIconProvider,
     QAbstractButton, QSizePolicy, QMenu, QInputDialog, QDialog, QMessageBox,
     QSystemTrayIcon, QCheckBox, QTabWidget, QSplitter, QComboBox, QColorDialog, QSpacerItem,
-    QSpinBox, QGridLayout, QStyle, QStyleOptionSlider, QTimeEdit,
+    QSpinBox, QGridLayout, QStyle, QStyleOptionSlider, QTimeEdit, QLineEdit, QFileDialog,
 )
 from comtypes import CLSCTX_ALL, GUID, COMMETHOD, IUnknown
 from pycaw.constants import DEVICE_STATE, EDataFlow
@@ -388,7 +388,10 @@ def build_style():
 configure_appearance("dark", DEFAULT_ACCENT, 100)
 
 
-CONFIG_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "AudioMixer")
+# versione portatile: con un file portable.txt accanto all'exe, le impostazioni stanno in data\
+PORTABLE = os.path.exists(os.path.join(app_dir(), "portable.txt"))
+CONFIG_DIR = (os.path.join(app_dir(), "data") if PORTABLE else
+              os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "AudioMixer"))
 CONFIG = os.path.join(CONFIG_DIR, "hotkeys.json")
 WINDOW_FILE = os.path.join(CONFIG_DIR, "window.json")
 
@@ -471,6 +474,11 @@ DEFAULT_SETTINGS = {
     "ui_scale": 100,
     "language": "auto",
     "fade_ms": 250,
+    "safe_volume": 0,
+    "ad_mute": False,
+    "per_device_volume": False,
+    "plugins": False,
+    "tutorial_done": False,
 }
 
 
@@ -492,6 +500,7 @@ def load_settings():
         data["accent"] = DEFAULT_ACCENT
     data["ui_scale"] = max(SCALE_MIN, min(SCALE_MAX, data["ui_scale"]))
     data["fade_ms"] = max(0, min(3000, data["fade_ms"]))
+    data["safe_volume"] = max(0, min(100, data["safe_volume"]))
     if data["language"] != "auto" and not (isinstance(data["language"], str)
                                            and LANG_CODE_RE.fullmatch(data["language"])):
         data["language"] = "auto"
@@ -693,31 +702,37 @@ def _legacy_duck_group():
         return None
 
 
+def parse_ducking(raw):
+    """Gruppi di ducking letti da un file (anche importato): scarta le righe non valide."""
+    data = {"enabled": True, "groups": []}
+    if not isinstance(raw, dict):
+        return data
+    data["enabled"] = bool(raw.get("enabled", True))
+    seen = set()
+    for g in raw.get("groups") or []:
+        if not isinstance(g, dict):
+            continue
+        gid = g.get("id")
+        if not isinstance(gid, str) or not gid or gid in seen:
+            gid = new_duck_id()
+        seen.add(gid)
+        clean = clean_duck_group(dict(g))
+        clean["id"] = gid
+        data["groups"].append(clean)
+    return data
+
+
 def load_ducking():
     """Gruppi di ducking: {"enabled": bool, "groups": [gruppo, ...]}. Un gruppo ha i suoi trigger,
     le sue app da abbassare, soglia, riduzione e tempi, e puo' essere disattivato singolarmente.
     Gruppi diversi possono avere la stessa app come bersaglio. Righe non valide vengono scartate
     senza fermare il programma."""
-    data = {"enabled": True, "groups": []}
     migrating = not os.path.exists(DUCKING_FILE)
     try:
         with open(DUCKING_FILE, encoding="utf-8") as f:
-            raw = json.load(f)
-        if isinstance(raw, dict):
-            data["enabled"] = bool(raw.get("enabled", True))
-            seen = set()
-            for g in raw.get("groups") or []:
-                if not isinstance(g, dict):
-                    continue
-                gid = g.get("id")
-                if not isinstance(gid, str) or not gid or gid in seen:
-                    gid = new_duck_id()
-                seen.add(gid)
-                clean = clean_duck_group(dict(g))
-                clean["id"] = gid
-                data["groups"].append(clean)
+            data = parse_ducking(json.load(f))
     except Exception:
-        pass
+        data = parse_ducking(None)
     if migrating and not data["groups"]:
         legacy = _legacy_duck_group()
         if legacy:
@@ -855,32 +870,62 @@ def load_automations():
     e ha: type ("app_open" / "app_close" / "output_device" / "time"), preset (nome), e il campo
     del suo tipo (app / device / time). Righe non valide vengono scartate senza fermare il
     programma."""
-    data = {"enabled": True, "rules": []}
     try:
         with open(AUTOMATIONS_FILE, encoding="utf-8") as f:
-            raw = json.load(f)
-        if isinstance(raw, dict):
-            data["enabled"] = bool(raw.get("enabled", True))
-            seen = set()
-            for r in raw.get("rules") or []:
-                if not _valid_rule(r):
-                    continue
-                rid = r.get("id")
-                if not isinstance(rid, str) or not rid or rid in seen:
-                    rid = new_rule_id()
-                seen.add(rid)
-                rule = {"id": rid, "enabled": bool(r.get("enabled", True)),
-                        "type": r["type"], "preset": r["preset"]}
-                if r["type"] in ("app_open", "app_close"):
-                    rule["app"] = r["app"]
-                elif r["type"] == "output_device":
-                    rule["device"] = r["device"]
-                else:
-                    rule["time"] = r["time"]
-                data["rules"].append(rule)
+            return parse_automations(json.load(f))
     except Exception:
-        pass
+        return parse_automations(None)
+
+
+def parse_automations(raw):
+    data = {"enabled": True, "rules": []}
+    if not isinstance(raw, dict):
+        return data
+    data["enabled"] = bool(raw.get("enabled", True))
+    seen = set()
+    for r in raw.get("rules") or []:
+        if not _valid_rule(r):
+            continue
+        rid = r.get("id")
+        if not isinstance(rid, str) or not rid or rid in seen:
+            rid = new_rule_id()
+        seen.add(rid)
+        rule = {"id": rid, "enabled": bool(r.get("enabled", True)),
+                "type": r["type"], "preset": r["preset"]}
+        if r["type"] in ("app_open", "app_close"):
+            rule["app"] = r["app"]
+        elif r["type"] == "output_device":
+            rule["device"] = r["device"]
+        else:
+            rule["time"] = r["time"]
+        data["rules"].append(rule)
     return data
+
+
+PROFILE_FORMAT = "audiomixer-profile"
+
+
+def make_profile(presets, automations, ducking):
+    """Profilo da condividere: preset (senza i tasti, che sono personali), regole e ducking."""
+    clean = {n: {k: v for k, v in p.items() if k != "hotkey"} for n, p in presets.items()}
+    return {"format": PROFILE_FORMAT, "version": 1, "app_version": APP_VERSION,
+            "presets": clean, "automations": automations, "ducking": ducking}
+
+
+def read_profile(raw):
+    """Profilo importato e ripulito: (preset, regole, gruppi di ducking). ValueError se non lo e'."""
+    if not isinstance(raw, dict) or raw.get("format") != PROFILE_FORMAT:
+        raise ValueError("not an AudioMixer profile")
+    raw_presets = raw.get("presets") if isinstance(raw.get("presets"), dict) else {}
+    presets = {str(k): {kk: vv for kk, vv in v.items() if kk != "hotkey"}
+               for k, v in raw_presets.items() if isinstance(v, dict)}
+    rules = parse_automations(raw.get("automations"))["rules"]
+    groups = parse_ducking(raw.get("ducking"))["groups"]
+    for r in rules:
+        r["id"] = new_rule_id()
+    for g in groups:
+        g["id"] = new_duck_id()
+    return presets, rules, groups
 
 
 def save_automations(data):
@@ -904,7 +949,24 @@ class Bridge(QObject):
 
 
 APP_ID = "audiomixer-single-instance"
-APP_VERSION = "0.3.9"
+APP_VERSION = "0.4.0"
+# "utente/repository" su GitHub: con le release pubblicate li', il mixer avvisa delle versioni nuove
+UPDATE_REPO = ""
+
+
+def version_tuple(text):
+    return tuple(int(x) for x in re.findall(r"\d+", text)[:3])
+
+
+def latest_release(repo):
+    """(versione, pagina) dell'ultima release su GitHub, o None se non si riesce a sapere."""
+    import urllib.request
+    req = urllib.request.Request(f"https://api.github.com/repos/{repo}/releases/latest",
+                                 headers={"User-Agent": "AudioMixer"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        data = json.load(r)
+    tag = data.get("tag_name") or ""
+    return (tag.lstrip("vV"), data.get("html_url") or "") if version_tuple(tag) else None
 DEV_PREFIX = "dev:"
 DEVICE_ICONS = {"in": "\U0001F3A4", "out": "\U0001F3A7"}
 SYSTEM_NAME = "Suoni di sistema"
@@ -1437,6 +1499,37 @@ def cancel_fade(sessions):
     FADER.cancel_ramp(sessions)
 
 
+AD_TITLES = {"advertisement", "spotify", "spotify free", "pubblicità", "werbung", "publicidad"}
+
+
+def window_titles():
+    """Titoli delle finestre visibili, per processo: {pid: [titolo, ...]}."""
+    import ctypes
+    from ctypes import wintypes
+    user32 = ctypes.windll.user32
+    titles = defaultdict(list)
+    proto = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+    def visit(hwnd, _):
+        if user32.IsWindowVisible(hwnd):
+            n = user32.GetWindowTextLengthW(hwnd)
+            if n:
+                buf = ctypes.create_unicode_buffer(n + 1)
+                user32.GetWindowTextW(hwnd, buf, n + 1)
+                pid = wintypes.DWORD()
+                user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+                titles[pid.value].append(buf.value)
+        return True
+
+    user32.EnumWindows(proto(visit), 0)
+    return titles
+
+
+def is_ad_title(titles):
+    """Spotify Free mostra "Advertisement" (o solo "Spotify") nel titolo durante le pubblicita'."""
+    return any(t.strip().lower() in AD_TITLES for t in titles)
+
+
 def limit_pct(info):
     """Limite massimo di volume (1-99 %) di una fonte; 100 = nessun limite."""
     v = info.get("max") if isinstance(info, dict) else None
@@ -1478,6 +1571,9 @@ class LimitSlider(QSlider):
             p.drawLine(x, 0, x, self.height())
 
 
+STRIP_W = 104
+
+
 class Strip(QFrame):
     """Un canale: nome app, meter, slider volume, mute."""
 
@@ -1487,10 +1583,12 @@ class Strip(QFrame):
         self.name = name
         self.on_menu = on_menu
         self.sessions, self.meters = [], []
+        self.width_px = STRIP_W
 
         self.icon_label = QLabel()
         self.icon_label.setAlignment(Qt.AlignCenter)
         self._icon = QFileIconProvider().icon(QFileInfo(exe)) if exe else None
+        self._exe_icon = self._icon
         if not exe:
             self.icon_label.setText("🔈")
 
@@ -1533,9 +1631,24 @@ class Strip(QFrame):
         lay.addWidget(self.key_btn)
         self.apply_scale()
 
+    def customize(self, info):
+        """Aspetto scelto dall'utente: colore (barra in alto), icona e larghezza."""
+        color = info.get("color")
+        self.setStyleSheet(f"QFrame#strip {{ border-top: {sc(3)}px solid {color}; }}"
+                           if valid_accent(color) else "")
+        path = info.get("icon")
+        custom = QIcon(path) if isinstance(path, str) and os.path.exists(path) else None
+        self._icon = custom if custom is not None and not custom.isNull() else self._exe_icon
+        if self._icon is None:
+            self.icon_label.setPixmap(QPixmap())
+            self.icon_label.setText("🔈")
+        width = info.get("width")
+        self.width_px = width if isinstance(width, int) and 60 <= width <= 200 else STRIP_W
+        self.apply_scale()
+
     def apply_scale(self):
         """Misure che dipendono dalla scala dell'interfaccia."""
-        self.setFixedWidth(sc(104))
+        self.setFixedWidth(sc(self.width_px))
         self.icon_label.setFixedHeight(sc(36))
         self.label.setFixedHeight(sc(32))
         if self._icon is not None:
@@ -2119,6 +2232,352 @@ class SystemStrip(QFrame):
         fade_mute(self.sessions, checked, SYSTEM_NAME)
 
 
+MIDI_FILE = os.path.join(CONFIG_DIR, "midi.json")
+
+
+def load_midi():
+    """Controlli MIDI assegnati: {"cc:<canale>:<numero>" o "note:<canale>:<numero>": app}.
+    Un CC (manopola, fader) muove il volume dell'app; una nota (pulsante) la muta / smuta."""
+    try:
+        with open(MIDI_FILE, encoding="utf-8") as f:
+            raw = json.load(f)
+        return {k: v for k, v in raw.items() if isinstance(k, str) and isinstance(v, str)
+                and re.fullmatch(r"(cc|note):\d+:\d+", k)} if isinstance(raw, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_midi(bindings):
+    try:
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        with open(MIDI_FILE, "w", encoding="utf-8") as f:
+            json.dump(bindings, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
+
+
+def midi_key(status, data1, data2):
+    """Messaggio MIDI -> (chiave del controllo, valore 0..127), o None se non interessa.
+    Note-off e note-on con velocita' 0 (rilascio del tasto) non contano."""
+    kind, ch = status & 0xF0, status & 0x0F
+    if kind == 0xB0:
+        return f"cc:{ch}:{data1}", data2
+    if kind == 0x90 and data2 > 0:
+        return f"note:{ch}:{data1}", data2
+    return None
+
+
+class MidiInput(QObject):
+    """Tutti gli ingressi MIDI di Windows (winmm, senza librerie esterne). I messaggi arrivano
+    da un thread di Windows e passano al thread dell'interfaccia col segnale `message`.
+    Lo Stream Deck non serve qui: manda tasti, e i tasti globali del mixer li ricevono gia'."""
+    message = Signal(int, int, int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        import ctypes
+        self._ct = ctypes
+        self._handles = []
+        self._proto = ctypes.WINFUNCTYPE(None, ctypes.c_void_p, ctypes.c_uint, ctypes.c_size_t,
+                                         ctypes.c_size_t, ctypes.c_size_t)
+        self._cb = self._proto(self._on_midi)
+        self.count = 0
+
+    def _on_midi(self, _h, msg, _inst, p1, _p2):
+        if msg == 0x3C3:  # MIM_DATA
+            self.message.emit(p1 & 0xFF, (p1 >> 8) & 0x7F, (p1 >> 16) & 0x7F)
+
+    def open_all(self):
+        """(Ri)apre tutti gli ingressi MIDI collegati. Torna quanti ne ha aperti."""
+        self.close_all()
+        try:
+            winmm = self._ct.windll.winmm
+            n = winmm.midiInGetNumDevs()
+        except Exception:
+            return 0
+        for i in range(n):
+            h = self._ct.c_void_p()
+            if winmm.midiInOpen(self._ct.byref(h), i, self._cb, 0, 0x30000) == 0:
+                winmm.midiInStart(h)
+                self._handles.append(h)
+        self.count = len(self._handles)
+        return self.count
+
+    def close_all(self):
+        try:
+            winmm = self._ct.windll.winmm
+            for h in self._handles:
+                winmm.midiInStop(h)
+                winmm.midiInClose(h)
+        except Exception:
+            pass
+        self._handles = []
+        self.count = 0
+
+
+PLUGINS_DIR = os.path.join(CONFIG_DIR, "plugins")
+PLUGIN_README = '''"""Esempio di plugin per AudioMixer. Copialo con un altro nome (senza _ davanti) per usarlo.
+
+Un plugin e' un file .py in questa cartella. Puo' definire:
+    setup(api)        chiamata una volta, quando il plugin viene caricato
+    on_refresh(api)   chiamata circa una volta al secondo
+api offre: apps(), get_volume(app), set_volume(app, 0..1), get_mute(app), set_mute(app, bool),
+           presets(), apply_preset(nome), log(testo)
+"""
+
+
+def on_refresh(api):
+    # esempio: Discord mai sopra l'80%
+    if "Discord" in api.apps() and api.get_volume("Discord") > 0.8:
+        api.set_volume("Discord", 0.8)
+'''
+
+
+class PluginAPI:
+    """Quello che un plugin puo' fare: leggere e cambiare volume e mute delle app, applicare
+    preset, scrivere nel log. Niente accesso diretto al resto del programma."""
+
+    def __init__(self, host):
+        self._host = host
+
+    def apps(self):
+        return [n for n in self._host.groups if not n.startswith(DEV_PREFIX)]
+
+    def get_volume(self, app):
+        sessions = self._host.groups.get(app)
+        return float(sessions[0].SimpleAudioVolume.GetMasterVolume()) if sessions else None
+
+    def set_volume(self, app, value):
+        fade_volume(self._host.groups.get(app, []), max(0.0, min(1.0, float(value))))
+
+    def get_mute(self, app):
+        sessions = self._host.groups.get(app)
+        return shown_mute(sessions, bool(sessions[0].SimpleAudioVolume.GetMute())) if sessions else None
+
+    def set_mute(self, app, muted):
+        fade_mute(self._host.groups.get(app, []), bool(muted), app)
+
+    def presets(self):
+        return list(self._host.presets)
+
+    def apply_preset(self, name):
+        self._host.apply_preset(name)
+
+    def log(self, text):
+        log_error(f"[plugin] {text}")
+
+
+def load_plugins(api):
+    """Carica i file .py della cartella plugin (quelli che iniziano con _ no). Un plugin che va in
+    errore viene scritto nel log e saltato. Torna [(nome, modulo)]."""
+    import importlib.util
+    import traceback
+    example = os.path.join(PLUGINS_DIR, "_esempio.py")
+    try:
+        os.makedirs(PLUGINS_DIR, exist_ok=True)
+        if not os.path.exists(example):
+            with open(example, "w", encoding="utf-8") as f:
+                f.write(PLUGIN_README)
+        names = sorted(os.listdir(PLUGINS_DIR))
+    except OSError:
+        return []
+    loaded = []
+    for fname in names:
+        if not fname.endswith(".py") or fname.startswith("_"):
+            continue
+        try:
+            spec = importlib.util.spec_from_file_location(f"audiomixer_plugin_{fname[:-3]}",
+                                                          os.path.join(PLUGINS_DIR, fname))
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            if hasattr(module, "setup"):
+                module.setup(api)
+            loaded.append((fname, module))
+        except Exception:
+            log_error(f"Plugin {fname} non caricato:\n" + traceback.format_exc())
+    return loaded
+
+
+BUSES_FILE = os.path.join(CONFIG_DIR, "buses.json")
+
+
+def load_buses():
+    """Gruppi (bus): [{"id", "name", "members": [app], "gain": 0..1, "bases": {app: volume}}].
+    Un'app sta in un gruppo solo."""
+    buses, taken = [], set()
+    try:
+        with open(BUSES_FILE, encoding="utf-8") as f:
+            raw = json.load(f)
+        for b in raw if isinstance(raw, list) else []:
+            if not isinstance(b, dict) or not isinstance(b.get("name"), str) or not b["name"]:
+                continue
+            members = [m for m in b.get("members") or [] if isinstance(m, str) and m not in taken]
+            taken.update(members)
+            gain = b.get("gain")
+            bases = b.get("bases") if isinstance(b.get("bases"), dict) else {}
+            buses.append({
+                "id": b["id"] if isinstance(b.get("id"), str) and b["id"] else new_rule_id(),
+                "name": b["name"], "members": members,
+                "gain": max(0.0, min(1.0, gain)) if isinstance(gain, (int, float)) else 1.0,
+                "bases": {k: float(v) for k, v in bases.items()
+                          if isinstance(v, (int, float)) and 0 <= v <= 10}})
+    except Exception:
+        pass
+    return buses
+
+
+def save_buses(buses):
+    try:
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        with open(BUSES_FILE, "w", encoding="utf-8") as f:
+            json.dump(buses, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
+
+
+def bus_capture(bus, volumes):
+    """Volume "base" di ogni app del gruppo: quello che avrebbe con il fader del gruppo al 100%.
+    volumes = {app: volume attuale}. Con il fader a 0 tiene le basi di prima, cosi' i rapporti
+    tra le app non si perdono."""
+    g = bus["gain"]
+    if g > 0.001:
+        for name, v in volumes.items():
+            bus["bases"][name] = min(10.0, v / g)
+    for name, v in volumes.items():
+        bus["bases"].setdefault(name, v)
+
+
+def bus_targets(bus, gain, limits):
+    """Volume di ogni app del gruppo con il fader del gruppo a `gain` (rispettando i limiti)."""
+    return {n: min(1.0, limits.get(n, 1.0), b * gain) for n, b in bus["bases"].items()
+            if n in bus["members"]}
+
+
+class BusStrip(QFrame):
+    """Gruppo / bus (punto 13): un fader solo muove insieme piu' app mantenendo i rapporti tra
+    i loro volumi. Mute del gruppo = mute di tutte le sue app."""
+
+    def __init__(self, bus, host):
+        super().__init__()
+        self.setObjectName("master")
+        self.bus, self.host = bus, host
+        self.meters = []
+        self.icon = QLabel("\U0001F39A")
+        self.icon.setAlignment(Qt.AlignCenter)
+        self.label = QLabel()
+        self.label.setObjectName("name")
+        self.label.setAlignment(Qt.AlignCenter)
+        self.label.setWordWrap(True)
+        self.meter = Meter()
+        self.slider = QSlider(Qt.Vertical)
+        self.slider.setRange(0, 100)
+        self.slider.setValue(round(bus["gain"] * 100))
+        self.slider.sliderPressed.connect(self.capture)
+        self.slider.valueChanged.connect(self.on_volume)
+        self.mute = QPushButton("\U0001F50A")
+        self.mute.setCheckable(True)
+        self.mute.toggled.connect(self.on_mute)
+        body = QHBoxLayout()
+        body.addWidget(self.meter)
+        body.addWidget(self.slider)
+        lay = QVBoxLayout(self)
+        lay.addWidget(self.icon)
+        lay.addWidget(self.label)
+        lay.addLayout(body, 1)
+        lay.addWidget(self.mute)
+        self._spacer = QSpacerItem(0, 30, QSizePolicy.Minimum, QSizePolicy.Fixed)
+        lay.addItem(self._spacer)
+        self.update_label()
+        self.apply_scale()
+
+    def apply_scale(self):
+        _scale_fixed_strip(self)
+
+    def update_label(self):
+        self.label.setText(wrap_name(self.bus["name"]))
+        names = ", ".join(self.host.display_name(m) for m in self.bus["members"])
+        self.label.setToolTip(tr("Gruppo: {apps}", apps=names or tr("(nessuna app)")))
+
+    def contextMenuEvent(self, e):
+        menu = QMenu(self)
+        rename = menu.addAction(tr("Rinomina…"))
+        delete = menu.addAction(tr("Elimina gruppo"))
+        chosen = menu.exec(e.globalPos())
+        if chosen == rename:
+            self.host.rename_bus(self.bus["id"])
+        elif chosen == delete:
+            self.host.delete_bus(self.bus["id"])
+
+    def _sessions(self):
+        return {m: self.host.groups.get(m) for m in self.bus["members"] if self.host.groups.get(m)}
+
+    def set_sessions(self):
+        self.meters = []
+        for sessions in self._sessions().values():
+            for s in sessions:
+                try:
+                    self.meters.append(s._ctl.QueryInterface(IAudioMeterInformation))
+                except Exception:
+                    pass
+        self.setEnabled(bool(self.bus["members"]))
+
+    def sync(self):
+        groups = self._sessions()
+        try:
+            muted = bool(groups) and all(
+                shown_mute(s, bool(s[0].SimpleAudioVolume.GetMute())) for s in groups.values())
+        except Exception:
+            return
+        self.mute.blockSignals(True)
+        self.mute.setChecked(muted)
+        self.mute.setText("\U0001F507" if muted else "\U0001F50A")
+        self.mute.blockSignals(False)
+
+    def tick_meter(self):
+        left = right = 0.0
+        for m in self.meters:
+            try:
+                l, r = channel_peaks(m)
+                left, right = max(left, l), max(right, r)
+            except Exception:
+                pass
+        self.meter.set_peaks(left, right)
+
+    def capture(self):
+        vols = {}
+        for name, sessions in self._sessions().items():
+            try:
+                vols[name] = self.host.guard.user_volume(
+                    name, float(sessions[0].SimpleAudioVolume.GetMasterVolume()))
+            except Exception:
+                pass
+        bus_capture(self.bus, vols)
+
+    def on_volume(self, v):
+        if not self.slider.isSliderDown():
+            self.capture()
+        gain = v / 100
+        self.bus["gain"] = gain
+        groups = self._sessions()
+        limits = {n: limit_pct(self.host.sources.get(n)) / 100 for n in groups}
+        for name, value in bus_targets(self.bus, gain, limits).items():
+            sessions = groups.get(name)
+            if not sessions:
+                continue
+            cancel_fade(sessions)
+            for s in sessions:
+                try:
+                    s.SimpleAudioVolume.SetMasterVolume(value, None)
+                except Exception:
+                    pass
+        self.host.save_buses_later()
+
+    def on_mute(self, checked):
+        self.mute.setText("\U0001F507" if checked else "\U0001F50A")
+        for name, sessions in self._sessions().items():
+            fade_mute(sessions, checked, name)
+
+
 class MasterStrip(QFrame):
     """Volume generale del dispositivo di uscita predefinito di Windows."""
 
@@ -2382,7 +2841,10 @@ class SettingsDialog(QDialog):
         gl.setSpacing(10)
         for key, text in [("close_to_tray", tr("Chiudi con la X = nascondi nella tray")),
                           ("start_minimized", tr("Avvia ridotto nella tray")),
-                          ("always_on_top", tr("Sempre in primo piano"))]:
+                          ("always_on_top", tr("Sempre in primo piano")),
+                          ("ad_mute", tr("Muta le pubblicità (Spotify Free)")),
+                          ("per_device_volume",
+                           tr("Ricorda il volume di ogni app per ogni dispositivo di uscita"))]:
             cb = QCheckBox(text)
             cb.setChecked(bool(mixer.settings.get(key)))
             cb.toggled.connect(lambda v, k=key: mixer.set_option(k, v))
@@ -2391,6 +2853,22 @@ class SettingsDialog(QDialog):
         self.autostart.setChecked(autostart_enabled())
         self.autostart.toggled.connect(self.on_autostart)
         gl.addWidget(self.autostart)
+
+        plug_row = QHBoxLayout()
+        self.plugins_cb = QCheckBox(tr("Plugin utente (file Python nella cartella plugin)"))
+        self.plugins_cb.setToolTip(tr("I plugin eseguono codice Python sul tuo PC: usa solo file "
+                                      "di cui ti fidi."))
+        self.plugins_cb.setChecked(bool(mixer.settings.get("plugins")))
+        self.plugins_cb.toggled.connect(self.on_plugins)
+        plug_row.addWidget(self.plugins_cb)
+        plug_row.addStretch(1)
+        plug_dir = QPushButton(tr("Apri cartella"))
+        plug_dir.clicked.connect(self.open_plugins_dir)
+        plug_row.addWidget(plug_dir)
+        gl.addLayout(plug_row)
+        guide = QPushButton(tr("Guida rapida"))
+        guide.clicked.connect(mixer.show_tutorial)
+        gl.addWidget(guide, 0, Qt.AlignLeft)
 
         fade_row = QHBoxLayout()
         fade_label = QLabel(tr("Dissolvenza"))
@@ -2409,6 +2887,24 @@ class SettingsDialog(QDialog):
         self.fade_box.valueChanged.connect(lambda v: mixer.set_option("fade_ms", int(v)))
         fade_row.addWidget(self.fade_box)
         gl.addLayout(fade_row)
+
+        safe_row = QHBoxLayout()
+        safe_tip = tr("Quando colleghi cuffie o casse, il loro volume non parte mai sopra questo "
+                      "valore, per evitare spaventi.")
+        safe_label = QLabel(tr("Volume di sicurezza"))
+        safe_label.setToolTip(safe_tip)
+        safe_row.addWidget(safe_label)
+        safe_row.addStretch(1)
+        safe_box = QSpinBox()
+        safe_box.setRange(0, 100)
+        safe_box.setSingleStep(5)
+        safe_box.setSuffix(" %")
+        safe_box.setSpecialValueText(tr("Disattivato"))
+        safe_box.setToolTip(safe_tip)
+        safe_box.setValue(int(mixer.settings.get("safe_volume", 0)))
+        safe_box.valueChanged.connect(lambda v: mixer.set_option("safe_volume", int(v)))
+        safe_row.addWidget(safe_box)
+        gl.addLayout(safe_row)
 
         lang_row = QHBoxLayout()
         lang_row.addWidget(QLabel(tr("Lingua")))
@@ -2820,6 +3316,25 @@ class SettingsDialog(QDialog):
         self.mixer.reopen_settings_tab = self.tabs.currentIndex()
         self.mixer.change_language(self.lang_box.currentData())
         self.accept()
+
+    def on_plugins(self, on):
+        if on and not confirm(self, tr("Plugin utente"),
+                              tr("I plugin sono programmi Python che girano con i tuoi permessi: "
+                                 "possono fare qualsiasi cosa sul PC. Attivali solo se i file "
+                                 "nella cartella plugin li hai scritti tu o vengono da qualcuno "
+                                 "di cui ti fidi.\n\nAttivare i plugin?"), tr("Attiva")):
+            self.plugins_cb.blockSignals(True)
+            self.plugins_cb.setChecked(False)
+            self.plugins_cb.blockSignals(False)
+            return
+        self.mixer.set_option("plugins", bool(on))
+
+    def open_plugins_dir(self):
+        try:
+            os.makedirs(PLUGINS_DIR, exist_ok=True)
+            os.startfile(PLUGINS_DIR)
+        except OSError:
+            pass
 
     def on_autostart(self, on):
         if not set_autostart(on):
@@ -3325,6 +3840,12 @@ class PresetsDialog(QDialog):
         new_btn.clicked.connect(mixer.save_preset_dialog)
         self.off_btn = QPushButton(tr("Disattiva preset (torna a prima)"))
         self.off_btn.clicked.connect(mixer.deactivate_preset)
+        export_btn = QPushButton(tr("Esporta profilo…"))
+        export_btn.setToolTip(tr("Salva preset, regole automatiche e ducking in un file JSON"))
+        export_btn.clicked.connect(mixer.export_profile)
+        import_btn = QPushButton(tr("Importa profilo…"))
+        import_btn.setToolTip(tr("Aggiunge preset, regole e ducking da un file esportato"))
+        import_btn.clicked.connect(mixer.import_profile)
         close = QPushButton(tr("Chiudi"))
         close.clicked.connect(self.accept)
         buttons = QHBoxLayout()
@@ -3332,9 +3853,14 @@ class PresetsDialog(QDialog):
         buttons.addWidget(self.off_btn)
         buttons.addStretch(1)
         buttons.addWidget(close)
+        files = QHBoxLayout()
+        files.addWidget(export_btn)
+        files.addWidget(import_btn)
+        files.addStretch(1)
         lay = QVBoxLayout(self)
         lay.addWidget(scroll)
         lay.addLayout(buttons)
+        lay.addLayout(files)
         self.rebuild()
 
     def rebuild(self):
@@ -3655,6 +4181,24 @@ class Mixer(QWidget):
         self.default_devices = set()
         self.default_out = None
         self.default_in = None
+        self._known_outs = None
+        self.ad_muted = set()
+        self._ad_state = {}
+        self._pid_names = {}
+        self._app_out = {}
+        self._devvol_skip_until = 0.0
+        self.midi_bindings = load_midi()
+        self._midi_learn = None
+        self._midi_box = None
+        self.midi = MidiInput(self)
+        self.midi.message.connect(self.on_midi)
+        self.midi.open_all()
+        self.plugin_api = PluginAPI(self)
+        self.plugins = []
+        self.buses = load_buses()
+        self.bus_strips = {}
+        self._bus_save_timer = QTimer(self, singleShot=True, interval=500,
+                                      timeout=lambda: save_buses(self.buses))
         self._enumerator = None
         self._tick_n = 0
         self.restore_window()
@@ -3775,6 +4319,11 @@ class Mixer(QWidget):
         head.addStretch(1)
         head.addWidget(self.order_btn)
         fl.addLayout(head)
+        self.search = QLineEdit()
+        self.search.setPlaceholderText(tr("Cerca…"))
+        self.search.setClearButtonEnabled(True)
+        self.search.textChanged.connect(self.apply_search)
+        fl.addWidget(self.search)
         fl.addWidget(list_scroll)
         self.update_order_button()
 
@@ -3816,6 +4365,8 @@ class Mixer(QWidget):
         body = QHBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
         body.addWidget(self.splitter, 1)
+        self.bus_row = QHBoxLayout()
+        body.addLayout(self.bus_row)
         body.addWidget(self.system)
         body.addWidget(self.master)
 
@@ -3858,6 +4409,9 @@ class Mixer(QWidget):
 
         for name in self.sources:
             self.add_row(name)
+        if self.settings.get("plugins"):
+            self.plugins = load_plugins(self.plugin_api)
+        self.check_updates()
         self.refresh()
         QTimer(self, interval=1000, timeout=self.refresh).start()
         QTimer(self, interval=50, timeout=self.tick).start()
@@ -3903,6 +4457,14 @@ class Mixer(QWidget):
         self.rows[name] = row
         self._row_layout(name).addWidget(row)
         self.update_dev_section()
+        if self.search.text():
+            self.apply_search()
+
+    def apply_search(self, _text=None):
+        """Ricerca rapida: nell'elenco restano solo le fonti il cui nome contiene il testo."""
+        q = self.search.text().strip().lower()
+        for name, row in self.rows.items():
+            row.setVisible(not q or q in self.display_name(name).lower() or q in name.lower())
 
     def rename_source(self, name):
         info = self.sources[name]
@@ -4041,6 +4603,109 @@ class Mixer(QWidget):
         self.refresh_master()
         self.apply_outputs()
         self._run_automations(prev_apps, prev_out)
+        self.check_ads()
+        self.track_device_volumes()
+        self.sync_buses()
+        self.run_plugins()
+
+    def run_plugins(self):
+        """on_refresh di ogni plugin. Uno che va in errore viene scritto nel log e fermato."""
+        if not self.settings.get("plugins"):
+            return
+        for item in list(self.plugins):
+            fname, module = item
+            hook = getattr(module, "on_refresh", None)
+            if hook is None:
+                continue
+            try:
+                hook(self.plugin_api)
+            except Exception:
+                import traceback
+                log_error(f"Plugin {fname} fermato per un errore:\n" + traceback.format_exc())
+                self.plugins.remove(item)
+
+    def track_device_volumes(self):
+        """Volume per app e dispositivo insieme (punto 9): quando l'uscita di un'app cambia
+        (la sua o quella predefinita di Windows), ricorda il volume che aveva sul dispositivo di
+        prima e rimette quello che aveva l'ultima volta sul nuovo. Subito dopo un preset non
+        ripristina niente, perche' il preset ha appena deciso lui i volumi."""
+        enabled = self.settings.get("per_device_volume")
+        skip = time.monotonic() < self._devvol_skip_until
+        default = self.default_out[len(DEV_PREFIX):] if self.default_out else None
+        for name, sessions in self.groups.items():
+            if name.startswith(DEV_PREFIX):
+                continue
+            info = self.sources.get(name)
+            if info is None:
+                continue
+            out = info.get("output") or default
+            old = self._app_out.get(name)
+            self._app_out[name] = out
+            if not enabled or old is None or out is None or old == out:
+                continue
+            try:
+                cur = self.guard.user_volume(name, sessions[0].SimpleAudioVolume.GetMasterVolume())
+            except Exception:
+                continue
+            vols = info.get("dev_volumes")
+            if not isinstance(vols, dict):
+                vols = info["dev_volumes"] = {}
+            vols[old] = round(float(cur), 4)
+            want = vols.get(out)
+            if want is not None and not skip:
+                fade_volume(sessions, min(float(want), limit_pct(info) / 100))
+            save_sources(self.sources)
+        for name in [n for n in self._app_out if n not in self.groups]:
+            del self._app_out[name]
+
+    def check_ads(self):
+        """Mute automatico delle pubblicita': quando il titolo di un'app diventa quello di una
+        pubblicita' la muta, e la smuta quando torna la musica. Tocca solo le app mutate da qui,
+        e solo al cambio: se durante la pubblicita' l'utente smuta, resta smutata."""
+        # shortcut: se il mixer va in crash durante una pubblicita' l'app resta mutata; file di recupero se capita
+        if len(self._pid_names) > 2000:
+            self._pid_names.clear()
+        if not self.settings.get("ad_mute"):
+            if self.ad_muted:
+                for name in self.ad_muted:
+                    fade_mute(self.groups.get(name, []), False, name)
+                self.ad_muted.clear()
+            self._ad_state.clear()
+            return
+        try:
+            titles = window_titles()
+        except Exception:
+            return
+        by_app = defaultdict(list)  # l'audio puo' venire da un processo figlio senza finestra
+        for pid, ts in titles.items():
+            if pid not in self._pid_names:
+                try:
+                    n = psutil.Process(pid).name()
+                    self._pid_names[pid] = n[:-4] if n.lower().endswith(".exe") else n
+                except psutil.Error:
+                    self._pid_names[pid] = ""
+            by_app[self._pid_names[pid]].extend(ts)
+        for name, sessions in self.groups.items():
+            if name.startswith(DEV_PREFIX):
+                continue
+            ad = is_ad_title(by_app.get(name, []))
+            was = self._ad_state.get(name, False)
+            self._ad_state[name] = ad
+            if ad and not was:
+                try:
+                    muted = shown_mute(sessions, bool(sessions[0].SimpleAudioVolume.GetMute()))
+                except Exception:
+                    continue
+                if not muted:
+                    fade_mute(sessions, True, name)
+                    self.ad_muted.add(name)
+            elif was and not ad and name in self.ad_muted:
+                self.ad_muted.discard(name)
+                fade_mute(sessions, False, name)
+        for name in list(self._ad_state):
+            if name not in self.groups:
+                self._ad_state.pop(name)
+                self.ad_muted.discard(name)
 
     def capture_devices(self):
         """Dispositivi di ingresso (microfoni) attivi; l'elenco si aggiorna ogni 5 secondi."""
@@ -4081,6 +4746,9 @@ class Mixer(QWidget):
         self.default_out = DEV_PREFIX + out_id if out_id else None
         self.default_in = DEV_PREFIX + in_id if in_id else None
         self.default_devices = {d for d in (self.default_out, self.default_in) if d}
+        outs = {n for n, (flow, _d) in present.items() if flow == "out"}
+        new_outs = outs - self._known_outs if self._known_outs is not None else set()
+        self._known_outs = outs
         changed = False
         for name, (flow, d) in present.items():
             title = d.FriendlyName or d.id
@@ -4103,8 +4771,22 @@ class Mixer(QWidget):
                     self.dev_sessions[name] = sess
             if sess is not None:
                 groups[name] = [sess]
+                if name in new_outs:
+                    self._cap_new_device(sess)
         if changed:
             save_sources(self.sources)
+
+    def _cap_new_device(self, sess):
+        """Volume di sicurezza: un'uscita appena collegata non parte mai sopra il limite scelto."""
+        cap = self.settings.get("safe_volume", 0) / 100
+        if cap <= 0:
+            return
+        try:
+            vol = sess.SimpleAudioVolume
+            if vol.GetMasterVolume() > cap:
+                vol.SetMasterVolume(cap, None)
+        except Exception:
+            pass
 
     def sync_strips(self):
         """Mostra nel mixer solo le fonti con l'occhio acceso."""
@@ -4134,6 +4816,7 @@ class Mixer(QWidget):
                         name, self.sources[name].get("exe"),
                         self.config.get(name, ""), self.start_bind, self.on_solo,
                         self.show_output_menu)
+                    strip.customize(self.sources[name])
                 self.strips[name] = strip
                 strip.set_title(self.display_name(name))
                 changed = True
@@ -4186,6 +4869,28 @@ class Mixer(QWidget):
         if not self._sizes_ready:
             self._sizes_ready = True
             QTimer.singleShot(0, self.apply_panel)
+        if not self.settings.get("tutorial_done"):
+            self.set_option("tutorial_done", True)
+            QTimer.singleShot(400, self.show_tutorial)
+
+    def show_tutorial(self):
+        """Guida rapida: al primo avvio e dal pulsante nelle Impostazioni."""
+        steps = [
+            tr("Benvenuto in AudioMixer!"),
+            tr("1. A sinistra c'è l'elenco Fonti: clicca l'occhio di un'app per mostrarla nel "
+               "mixer. Il campo Cerca filtra l'elenco."),
+            tr("2. Ogni striscia ha volume, mute (🔊), solo (S) e un tasto rapido (⌨)."),
+            tr("3. Tasto destro su una striscia: uscita audio, limite di volume, gruppo, colore, "
+               "icona, larghezza e controllo MIDI."),
+            tr("4. Preset (in alto a sinistra): salva e richiama volumi, mute e uscite. "
+               "Da Gestisci preset puoi esportarli e importarli."),
+            tr("5. ⚙ Impostazioni: ducking, limiti, automazioni, dissolvenza, volume di sicurezza, "
+               "mute delle pubblicità."),
+        ]
+        box = QMessageBox(QMessageBox.Information, tr("Guida rapida"), "\n\n".join(steps),
+                          QMessageBox.Ok, self)
+        box.setWindowFlag(Qt.WindowStaysOnTopHint, True)
+        box.exec()
 
     def toggle_panel(self):
         self._panel_open = not self._panel_open
@@ -4244,8 +4949,12 @@ class Mixer(QWidget):
             return
         self._closed = True
         self.save_window()
+        self.midi.close_all()
+        save_buses(self.buses)
         self.guard.release_all()
         self.restore_solo()
+        for name in self.ad_muted:
+            fade_mute(self.groups.get(name, []), False, name)
         self.fader.finish_all()
         self.tray.hide()
 
@@ -4297,6 +5006,7 @@ class Mixer(QWidget):
         self.dev_btn.setToolTip(tr("Elenco dei dispositivi (microfoni e casse) al posto delle app.\n"
                                    "I canali restano nel mixer, tra le app."))
         self.toggle_btn.setToolTip(tr("Mostra / nascondi l'elenco Fonti"))
+        self.search.setPlaceholderText(tr("Cerca…"))
         self.hint.setText(tr("Apri l'elenco Fonti (freccia a sinistra) e clicca\n"
                              "l'occhio di una fonte per mostrarla qui."))
         self.pin_btn.setToolTip(tr("Sempre in primo piano"))
@@ -4327,6 +5037,8 @@ class Mixer(QWidget):
         save_settings(self.settings)
         if key == "fade_ms":
             self.fader.set_duration(value)
+        if key == "plugins":
+            self.plugins = load_plugins(self.plugin_api) if value else []
         if key == "always_on_top":
             self.pin_btn.blockSignals(True)
             self.pin_btn.setChecked(bool(value))
@@ -4371,7 +5083,7 @@ class Mixer(QWidget):
         self._fonti_w = round(self._fonti_w * UI["scale"] / old_scale)
         self.toggle_btn.setFixedWidth(sc(TOGGLE_W))
         QApplication.instance().setStyleSheet(build_style())
-        for w in list(self.strips.values()) + [self.master, self.system]:
+        for w in list(self.strips.values()) + list(self.bus_strips.values()) + [self.master, self.system]:
             w.apply_scale()
         for row in self.rows.values():
             row.apply_scale()
@@ -4492,7 +5204,49 @@ class Mixer(QWidget):
                 act.setChecked((pct or 100) == now_limit)
                 limit_actions[act] = pct
             custom = sub.addAction(tr("Altro…"))
+        menu.addSeparator()
+        look = menu.addMenu(tr("Personalizza striscia"))
+        look_actions = {look.addAction(tr("Colore…")): "color",
+                        look.addAction(tr("Icona…")): "icon"}
+        wsub = look.addMenu(tr("Larghezza"))
+        now_w = self.sources.get(name, {}).get("width", STRIP_W)
+        for label, w in ((tr("Stretta"), 80), (tr("Normale"), STRIP_W), (tr("Larga"), 140)):
+            act = wsub.addAction(label)
+            act.setCheckable(True)
+            act.setChecked(now_w == w)
+            look_actions[act] = ("width", w)
+        look.addSeparator()
+        look_actions[look.addAction(tr("Ripristina aspetto"))] = "reset"
+        bus_actions = {}
+        if not self.sources.get(name, {}).get("device"):
+            bsub = menu.addMenu(tr("Gruppo"))
+            mine = self.bus_of(name)
+            for label, bid in [(tr("Nessuno"), None)] + [(b["name"], b["id"]) for b in self.buses]:
+                act = bsub.addAction(label.replace("&", "&&"))
+                act.setCheckable(True)
+                act.setChecked((mine["id"] if mine else None) == bid)
+                bus_actions[act] = bid
+            bsub.addSeparator()
+            bus_actions[bsub.addAction(tr("Nuovo gruppo…"))] = "new"
+        midi_learn = menu.addAction(tr("Assegna controllo MIDI…"))
+        bound = [k for k, v in self.midi_bindings.items() if v == name]
+        midi_clear = menu.addAction(tr("Togli controlli MIDI ({n})", n=len(bound)))
+        midi_clear.setEnabled(bool(bound))
         chosen = menu.exec(pos)
+        if chosen == midi_learn:
+            self.start_midi_learn(name)
+            return
+        if chosen == midi_clear:
+            for k in bound:
+                del self.midi_bindings[k]
+            save_midi(self.midi_bindings)
+            return
+        if chosen is not None and chosen in look_actions:
+            self.customize_strip(name, look_actions[chosen])
+            return
+        if chosen is not None and chosen in bus_actions:
+            self.assign_bus(name, bus_actions[chosen])
+            return
         if chosen is not None and chosen in limit_actions:
             self.set_limit(name, limit_actions[chosen])
             return
@@ -4508,6 +5262,159 @@ class Mixer(QWidget):
             if chosen == action:
                 self.set_output(name, device_id)
                 return
+
+    def check_updates(self):
+        """Controlla in background se su GitHub c'e' una versione piu' nuova e la segnala nella
+        tray (clic sul messaggio = apre la pagina di download). Senza UPDATE_REPO non fa niente."""
+        if not UPDATE_REPO:
+            return
+
+        def worker():
+            try:
+                found = latest_release(UPDATE_REPO)
+            except Exception:
+                return
+            if found and version_tuple(found[0]) > version_tuple(APP_VERSION):
+                self.bridge.call_main.emit(lambda: self._show_update(*found))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _show_update(self, version, url):
+        self._update_url = url
+        self.tray.messageClicked.connect(lambda: QDesktopServices.openUrl(QUrl(self._update_url)))
+        self.tray.showMessage("Audio Mixer", tr("È disponibile la versione {v}. Clic qui per "
+                                                "scaricarla.", v=version))
+
+    def start_midi_learn(self, name):
+        """Il prossimo controllo MIDI mosso viene assegnato a `name`: manopola o fader per il
+        volume, pulsante (nota) per il mute."""
+        if self.midi.open_all() == 0:
+            QMessageBox.information(self, tr("Controllo MIDI"),
+                                    tr("Nessun dispositivo MIDI collegato."))
+            return
+        self._midi_learn = name
+        box = QMessageBox(QMessageBox.Information, tr("Controllo MIDI"),
+                          tr("Muovi una manopola o un fader (volume) o premi un pulsante (mute) "
+                             "sul controller MIDI per «{name}».", name=self.display_name(name)),
+                          QMessageBox.Cancel, self)
+        box.setModal(False)
+        box.finished.connect(lambda _r: setattr(self, "_midi_learn", None))
+        self._midi_box = box
+        box.show()
+
+    def on_midi(self, status, data1, data2):
+        hit = midi_key(status, data1, data2)
+        if hit is None:
+            return
+        key, value = hit
+        if self._midi_learn is not None:
+            self.midi_bindings[key] = self._midi_learn
+            save_midi(self.midi_bindings)
+            self._midi_learn = None
+            if self._midi_box is not None:
+                self._midi_box.close()
+                self._midi_box = None
+            return
+        name = self.midi_bindings.get(key)
+        if name is None:
+            return
+        if key.startswith("note:"):
+            self.toggle_mute(name)
+            return
+        strip = self.strips.get(name)
+        if strip is not None and strip.isEnabled():
+            strip.slider.setValue(round(value * 100 / 127))
+            return
+        sessions = self.groups.get(name, [])
+        cancel_fade(sessions)
+        level = min(value / 127, limit_pct(self.sources.get(name)) / 100)
+        for s in sessions:
+            try:
+                s.SimpleAudioVolume.SetMasterVolume(level, None)
+            except Exception:
+                pass
+
+    def save_buses_later(self):
+        self._bus_save_timer.start()
+
+    def sync_buses(self):
+        """Una striscia per ogni gruppo, accanto ai Suoni di sistema."""
+        ids = {b["id"] for b in self.buses}
+        for bid in [i for i in self.bus_strips if i not in ids]:
+            self.bus_strips.pop(bid).deleteLater()
+        for b in self.buses:
+            strip = self.bus_strips.get(b["id"])
+            if strip is None:
+                strip = self.bus_strips[b["id"]] = BusStrip(b, self)
+                self.bus_row.addWidget(strip)
+            strip.update_label()
+            strip.set_sessions()
+            strip.sync()
+
+    def bus_of(self, name):
+        return next((b for b in self.buses if name in b["members"]), None)
+
+    def assign_bus(self, name, bus_id):
+        """Mette un'app in un gruppo (None = in nessuno). bus_id "new" = gruppo nuovo."""
+        if bus_id == "new":
+            text = ask_text(self, tr("Nuovo gruppo"), tr("Nome del gruppo (es. Giochi, Musica):"))
+            if not text or not text.strip():
+                return
+            bus = {"id": new_rule_id(), "name": text.strip(), "members": [], "gain": 1.0,
+                   "bases": {}}
+            self.buses.append(bus)
+            bus_id = bus["id"]
+        for b in self.buses:
+            if name in b["members"]:
+                b["members"].remove(name)
+                b["bases"].pop(name, None)
+            if b["id"] == bus_id:
+                b["members"].append(name)
+        save_buses(self.buses)
+        self.sync_buses()
+
+    def rename_bus(self, bus_id):
+        bus = next((b for b in self.buses if b["id"] == bus_id), None)
+        if bus is None:
+            return
+        text = ask_text(self, tr("Rinomina gruppo"), tr("Nome del gruppo:"), bus["name"])
+        if text and text.strip():
+            bus["name"] = text.strip()
+            save_buses(self.buses)
+            self.sync_buses()
+
+    def delete_bus(self, bus_id):
+        """Toglie il gruppo: le app restano al volume che hanno adesso."""
+        self.buses = [b for b in self.buses if b["id"] != bus_id]
+        save_buses(self.buses)
+        self.sync_buses()
+
+    def customize_strip(self, name, what):
+        """Colore, icona e larghezza scelti a mano per una striscia (punto 12)."""
+        info = self.sources.get(name)
+        if info is None:
+            return
+        if what == "color":
+            color = QColorDialog.getColor(QColor(info.get("color") or PALETTE["accent"]), self)
+            if not color.isValid():
+                return
+            info["color"] = color.name()
+        elif what == "icon":
+            path, _ = QFileDialog.getOpenFileName(self, tr("Icona…"), "",
+                                                  tr("Immagini") + " (*.png *.jpg *.ico *.bmp *.svg)")
+            if not path:
+                return
+            info["icon"] = path
+        elif what == "reset":
+            for k in ("color", "icon", "width"):
+                info.pop(k, None)
+        else:
+            info["width"] = what[1]
+        save_sources(self.sources)
+        strip = self.strips.get(name)
+        if strip is not None:
+            strip.customize(info)
+        self.layout_strips()
 
     def run_router(self, pids, device_id, on_done):
         """Cambia l'uscita in un thread (il processo di servizio puo' impiegare qualche secondo).
@@ -4888,6 +5795,49 @@ class Mixer(QWidget):
         self._presets_dlg.exec()
         self._presets_dlg = None
 
+    def export_profile(self):
+        parent = self._presets_dlg or self
+        path, _ = QFileDialog.getSaveFileName(parent, tr("Esporta profilo"),
+                                              "AudioMixer_profilo.json", "JSON (*.json)")
+        if not path:
+            return
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(make_profile(self.presets, self.automations, self.ducking), f,
+                          indent=2, ensure_ascii=False)
+        except OSError as e:
+            QMessageBox.warning(parent, tr("Esporta profilo"), str(e))
+
+    def import_profile(self):
+        """Aggiunge i preset (sostituisce quelli con lo stesso nome, tenendo il loro tasto),
+        le regole automatiche e i gruppi di ducking di un profilo esportato."""
+        parent = self._presets_dlg or self
+        path, _ = QFileDialog.getOpenFileName(parent, tr("Importa profilo"), "", "JSON (*.json)")
+        if not path:
+            return
+        try:
+            with open(path, encoding="utf-8") as f:
+                presets, rules, groups = read_profile(json.load(f))
+        except (OSError, ValueError) as e:
+            QMessageBox.warning(parent, tr("Importa profilo"),
+                                tr("Questo file non è un profilo di AudioMixer valido.\n\n{err}",
+                                   err=e))
+            return
+        for name, data in presets.items():
+            key = self.presets.get(name, {}).get("hotkey")
+            if key:
+                data["hotkey"] = key
+            self.presets[name] = data
+        self.automations.setdefault("rules", []).extend(rules)
+        self.ducking.setdefault("groups", []).extend(groups)
+        self.persist_presets()
+        save_automations(self.automations)
+        save_ducking(self.ducking)
+        self.refresh_preset_ui()
+        QMessageBox.information(parent, tr("Importa profilo"),
+                                tr("Importati: {p} preset, {r} regole, {g} gruppi di ducking.",
+                                   p=len(presets), r=len(rules), g=len(groups)))
+
     def capture_preset(self):
         """Fotografia dello stato attuale: volume e mute delle app, solo, uscite, fonti visibili,
         ordine delle fonti, master e suoni di sistema. Di un'app che in questo momento non suona si salva l'ultimo
@@ -5050,6 +6000,7 @@ class Mixer(QWidget):
         self.refresh_preset_ui()
 
     def _apply_data(self, preset):
+        self._devvol_skip_until = time.monotonic() + 3
         if self.solo_set:
             self.solo_set.clear()
             self.restore_solo()
@@ -5443,6 +6394,8 @@ class Mixer(QWidget):
             strip.tick_meter()
         self.master.tick_meter()
         self.system.tick_meter()
+        for bus in self.bus_strips.values():
+            bus.tick_meter()
         self._tick_n += 1
         if self._tick_n % 8 == 0:
             self.master.sync()
