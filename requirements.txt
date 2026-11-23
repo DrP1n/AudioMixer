@@ -1,0 +1,5 @@
+PySide6==6.11.2
+pycaw==20260927
+comtypes==1.4.17
+psutil==7.2.2
+keyboard==0.13.5

@@ -1,0 +1,6 @@
+# build output, recreated by the .bat files
+*.exe
+build/
+dist/
+*.spec
+__pycache__/
