@@ -1,11 +1,11 @@
 ; =====================================================================
 ;  Installer di AudioMixer (NSIS 3.x)
 ;
-;  Metti questo file nella stessa cartella di:
-;     AudioMixer.exe     (creato da "Crea AudioMixer.bat")
-;     icon.ico
-;     lingue\            (la cartella con i file delle lingue)
-;  poi esegui "Crea Installer.bat".
+;  Non compilarlo a mano: esegui scripts\"Crea Installer.bat", che lo lancia
+;  dalla cartella del progetto (/NOCD). Usa:
+;     dist\AudioMixer.exe  (creato da "Crea AudioMixer.bat")
+;     icon.ico, lingue\
+;  e crea release\AudioMixer_Setup_<versione>.exe
 ; =====================================================================
 Unicode True
 
@@ -21,7 +21,7 @@ Unicode True
 !define APPROVED_KEY "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"
 
 Name "${APPNAME}"
-OutFile "${APPNAME}_Setup_${VERSION}.exe"
+OutFile "release\${APPNAME}_Setup_${VERSION}.exe"
 InstallDir "$PROGRAMFILES64\${APPNAME}"
 InstallDirRegKey HKLM "${APP_KEY}" "InstallDir"
 RequestExecutionLevel admin
@@ -134,7 +134,7 @@ Section "$(SEC_MAIN)" SecMain
   Call CloseApp
 
   SetOutPath "$INSTDIR"
-  File "${EXENAME}"
+  File "dist\${EXENAME}"
   SetOutPath "$INSTDIR\lingue"
   File "lingue\*.*"
 

@@ -19,7 +19,15 @@ Every app that plays sound gets its own channel with a fader, a level meter, mut
 
 ## Install
 
-Run `AudioMixer_Setup_<version>.exe`. Settings are stored in `%APPDATA%\AudioMixer`.
+Run `release\AudioMixer_Setup_<version>.exe`. Settings are stored in `%APPDATA%\AudioMixer`.
+
+## Folders
+
+| Folder | Contents |
+|--------|----------|
+| `release\` | The installer to give to users (not in git: publish it as a release download) |
+| `scripts\` | Build scripts: they turn the source into the installer |
+| root, `lingue\` | Source code, icon, translations, tests |
 
 ## Run from source
 
@@ -32,8 +40,8 @@ python mixer.pyw
 
 ## Build
 
-1. `Crea AudioMixer.bat` builds `AudioMixer.exe` with PyInstaller.
-2. `Crea Installer.bat` builds `AudioMixer_Setup_<version>.exe` with [NSIS](https://nsis.sourceforge.io/).
+1. `scripts\Crea AudioMixer.bat` builds `dist\AudioMixer.exe` with PyInstaller.
+2. `scripts\Crea Installer.bat` builds `release\AudioMixer_Setup_<version>.exe` with [NSIS](https://nsis.sourceforge.io/).
    The version is read from `APP_VERSION` in `mixer.pyw`.
 
 ## Tests

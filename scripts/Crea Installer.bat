@@ -1,5 +1,6 @@
 @echo off
-cd /d "%~dp0"
+rem Crea release\AudioMixer_Setup_<versione>.exe: il file da dare agli utenti.
+cd /d "%~dp0.."
 
 set "MAKENSIS="
 if exist "%ProgramFiles(x86)%\NSIS\makensis.exe" set "MAKENSIS=%ProgramFiles(x86)%\NSIS\makensis.exe"
@@ -11,13 +12,13 @@ if not defined MAKENSIS (
   exit /b 1
 )
 
-if not exist "AudioMixer.exe" (
-  echo Manca AudioMixer.exe: esegui prima "Crea AudioMixer.bat".
+if not exist "dist\AudioMixer.exe" (
+  echo Manca dist\AudioMixer.exe: esegui prima "Crea AudioMixer.bat".
   pause
   exit /b 1
 )
 if not exist "lingue\en.json" (
-  echo Manca la cartella "lingue" accanto a questo file.
+  echo Manca la cartella "lingue" nella cartella del progetto.
   pause
   exit /b 1
 )
@@ -32,7 +33,9 @@ for /f "tokens=2 delims==" %%a in ('findstr /b /c:"APP_VERSION =" mixer.pyw 2^>n
 set "VERSION=%VERSION: =%"
 set "VERSION=%VERSION:"=%"
 
-"%MAKENSIS%" /DVERSION=%VERSION% Installer.nsi
+if not exist release mkdir release
+rem /NOCD: i percorsi in Installer.nsi partono dalla cartella del progetto, non da scripts\
+"%MAKENSIS%" /NOCD /DVERSION=%VERSION% scripts\Installer.nsi
 if errorlevel 1 (
   echo.
   echo Errore nella creazione dell'installer.
@@ -41,5 +44,5 @@ if errorlevel 1 (
 )
 
 echo.
-echo Creato: AudioMixer_Setup_%VERSION%.exe
+echo Creato: release\AudioMixer_Setup_%VERSION%.exe
 pause
