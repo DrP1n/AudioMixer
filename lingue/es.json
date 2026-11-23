@@ -233,6 +233,7 @@
     "Esporta profilo": "Exportar perfil",
     "Importa profilo": "Importar perfil",
     "Questo file non è un profilo di AudioMixer valido.\n\n{err}": "Este archivo no es un perfil de AudioMixer válido.\n\n{err}",
-    "Importati: {p} preset, {r} regole, {g} gruppi di ducking.": "Importados: {p} presets, {r} reglas, {g} grupos de ducking."
+    "Importati: {p} preset, {r} regole, {g} gruppi di ducking.": "Importados: {p} presets, {r} reglas, {g} grupos de ducking.",
+    "Non riesco ad aprire la cartella:\n{path}": "No puedo abrir la carpeta:\n{path}"
   }
 }

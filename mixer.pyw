@@ -959,7 +959,7 @@ class Bridge(QObject):
 
 
 APP_ID = "audiomixer-single-instance"
-APP_VERSION = "0.4.1"
+APP_VERSION = "0.4.2"
 # "utente/repository" su GitHub: con le release pubblicate li', il mixer avvisa delle versioni nuove
 UPDATE_REPO = ""
 
@@ -2378,17 +2378,27 @@ class PluginAPI:
         log_error(f"[plugin] {text}")
 
 
-def load_plugins(api):
-    """Carica i file .py della cartella plugin (quelli che iniziano con _ no). Un plugin che va in
-    errore viene scritto nel log e saltato. Torna [(nome, modulo)]."""
-    import importlib.util
-    import traceback
+def ensure_plugins_dir():
+    """Crea la cartella dei plugin con il file di esempio. False se non si riesce."""
     example = os.path.join(PLUGINS_DIR, "_esempio.py")
     try:
         os.makedirs(PLUGINS_DIR, exist_ok=True)
         if not os.path.exists(example):
             with open(example, "w", encoding="utf-8") as f:
                 f.write(PLUGIN_README)
+        return True
+    except OSError:
+        return False
+
+
+def load_plugins(api):
+    """Carica i file .py della cartella plugin (quelli che iniziano con _ no). Un plugin che va in
+    errore viene scritto nel log e saltato. Torna [(nome, modulo)]."""
+    import importlib.util
+    import traceback
+    if not ensure_plugins_dir():
+        return []
+    try:
         names = sorted(os.listdir(PLUGINS_DIR))
     except OSError:
         return []
@@ -3341,11 +3351,14 @@ class SettingsDialog(QDialog):
         self.mixer.set_option("plugins", bool(on))
 
     def open_plugins_dir(self):
-        try:
-            os.makedirs(PLUGINS_DIR, exist_ok=True)
-            os.startfile(PLUGINS_DIR)
-        except OSError:
-            pass
+        """Apre la cartella dei plugin (con dentro il file di esempio). La finestra Impostazioni
+        resta sempre in primo piano e coprirebbe Esplora file: la si chiude."""
+        ok = ensure_plugins_dir() and QDesktopServices.openUrl(QUrl.fromLocalFile(PLUGINS_DIR))
+        if not ok:
+            QMessageBox.warning(self, tr("Plugin utente"),
+                                tr("Non riesco ad aprire la cartella:\n{path}", path=PLUGINS_DIR))
+            return
+        self.accept()
 
     def on_autostart(self, on):
         if not set_autostart(on):
