@@ -7,6 +7,8 @@ Every app that plays sound gets its own channel with a fader, a level meter, mut
 
 - Per-app volume, mute, solo and output device
 - Channels for input and output devices, system sounds and the master volume
+- Duplicate an output on other outputs (right-click a device strip): hear the speakers' audio
+  in the headphones too, live, without a virtual cable
 - Groups (buses): one fader moves several apps together and keeps their volume ratios
 - Global hotkeys to mute apps and to switch presets (a Stream Deck can send these keys)
 - MIDI controllers: assign a knob or fader to an app's volume, a button to its mute

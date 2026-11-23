@@ -234,6 +234,8 @@
     "Importa profilo": "Profil importieren",
     "Questo file non è un profilo di AudioMixer valido.\n\n{err}": "Diese Datei ist kein gültiges AudioMixer-Profil.\n\n{err}",
     "Importati: {p} preset, {r} regole, {g} gruppi di ducking.": "Importiert: {p} Presets, {r} Regeln, {g} Ducking-Gruppen.",
-    "Non riesco ad aprire la cartella:\n{path}": "Ich kann den Ordner nicht öffnen:\n{path}"
+    "Non riesco ad aprire la cartella:\n{path}": "Ich kann den Ordner nicht öffnen:\n{path}",
+    "Duplica l'audio anche su": "Audio auch wiedergeben auf",
+    "(nessun'altra uscita)": "(kein anderer Ausgang)"
   }
 }

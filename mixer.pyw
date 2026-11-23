@@ -15,7 +15,7 @@ import subprocess
 import tempfile
 from collections import defaultdict
 from string import Template
-from ctypes import c_float, c_uint32, POINTER, HRESULT
+from ctypes import c_float, c_uint32, c_ubyte, c_ulonglong, POINTER, HRESULT
 
 # Python installato nella radice di un disco (es. D:\) cerca le librerie in "D:Lib\site-packages",
 # relativo alla cartella di lavoro: all'avvio di Windows (cartella System32) non le trova.
@@ -959,7 +959,7 @@ class Bridge(QObject):
 
 
 APP_ID = "audiomixer-single-instance"
-APP_VERSION = "0.4.2"
+APP_VERSION = "0.4.3"
 # "utente/repository" su GitHub: con le release pubblicate li', il mixer avvisa delle versioni nuove
 UPDATE_REPO = ""
 
@@ -1755,8 +1755,8 @@ class DeviceStrip(Strip):
     """Canale di un dispositivo: microfono (ingresso) oppure casse/cuffie (uscita).
     Volume, mute, meter e tasto di mute; niente solo e niente scelta dell'uscita."""
 
-    def __init__(self, name, flow, key="", on_bind=None):
-        super().__init__(name, None, key, on_bind, None, None)
+    def __init__(self, name, flow, key="", on_bind=None, on_menu=None):
+        super().__init__(name, None, key, on_bind, None, on_menu)
         self.flow = flow
         self.default = False
         self.solo.hide()
@@ -2417,6 +2417,136 @@ def load_plugins(api):
         except Exception:
             log_error(f"Plugin {fname} non caricato:\n" + traceback.format_exc())
     return loaded
+
+
+class IAudioCaptureClientMx(IUnknown):
+    _iid_ = GUID("{C8ADBD64-E71E-48a0-A4DE-185C395CD317}")
+    _methods_ = (
+        COMMETHOD([], HRESULT, "GetBuffer",
+                  (["out"], POINTER(POINTER(c_ubyte)), "ppData"),
+                  (["out"], POINTER(c_uint32), "pNumFramesToRead"),
+                  (["out"], POINTER(c_uint32), "pdwFlags"),
+                  (["out"], POINTER(c_ulonglong), "pu64DevicePosition"),
+                  (["out"], POINTER(c_ulonglong), "pu64QPCPosition")),
+        COMMETHOD([], HRESULT, "ReleaseBuffer", (["in"], c_uint32, "NumFramesRead")),
+        COMMETHOD([], HRESULT, "GetNextPacketSize", (["out"], POINTER(c_uint32), "pNumFrames")),
+    )
+
+
+class IAudioRenderClientMx(IUnknown):
+    _iid_ = GUID("{F294ACFC-3146-4483-A7BF-ADDCA7C260E2}")
+    _methods_ = (
+        COMMETHOD([], HRESULT, "GetBuffer",
+                  (["in"], c_uint32, "NumFramesRequested"),
+                  (["out"], POINTER(POINTER(c_ubyte)), "ppData")),
+        COMMETHOD([], HRESULT, "ReleaseBuffer",
+                  (["in"], c_uint32, "NumFramesWritten"), (["in"], c_uint32, "dwFlags")),
+    )
+
+
+MIRRORS_FILE = os.path.join(CONFIG_DIR, "mirrors.json")
+
+
+def load_mirrors():
+    """Uscite duplicate: [[sorgente, destinazione], ...] (nomi "dev:<id>")."""
+    try:
+        with open(MIRRORS_FILE, encoding="utf-8") as f:
+            raw = json.load(f)
+        return [[s, d] for s, d in raw if isinstance(s, str) and isinstance(d, str) and s != d]
+    except Exception:
+        return []
+
+
+def save_mirrors(pairs):
+    try:
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        with open(MIRRORS_FILE, "w", encoding="utf-8") as f:
+            json.dump(pairs, f, indent=2)
+    except Exception:
+        pass
+
+
+def mirror_allowed(pairs, src, dst):
+    """Vietato creare un giro (A->B e B->A, o A->B->C->A): l'audio rientrerebbe all'infinito."""
+    reach, todo = set(), [dst]
+    while todo:
+        node = todo.pop()
+        if node == src:
+            return False
+        if node not in reach:
+            reach.add(node)
+            todo.extend(d for s, d in pairs if s == node)
+    return src != dst
+
+
+class OutputMirror(threading.Thread):
+    """Copia in tempo reale tutto quello che suona su un'uscita (cattura "loopback" di WASAPI)
+    su un'altra uscita. Windows converte da solo frequenza e canali se i due dispositivi sono
+    diversi. La copia parte dal suono prima del volume della sorgente: si puo' anche mutare la
+    sorgente e sentire solo la destinazione."""
+    LOOPBACK = 0x00020000
+    AUTOCONVERT = 0x80000000 | 0x08000000  # AUTOCONVERTPCM | SRC_DEFAULT_QUALITY
+    MAX_LATENCY = 0.08  # secondi in coda sulla destinazione oltre i quali si scarta
+
+    def __init__(self, src_id, dst_id):
+        super().__init__(daemon=True)
+        self.src_id, self.dst_id = src_id, dst_id
+        self.stop_event = threading.Event()
+        self.error = None
+        self.copied = 0  # frame copiati: serve a verificare che passi davvero audio
+
+    def _client(self, enumerator, dev_id):
+        from pycaw.api.audioclient import IAudioClient
+        dev = enumerator.GetDevice(dev_id)
+        return dev.Activate(IAudioClient._iid_, CLSCTX_ALL, None).QueryInterface(IAudioClient)
+
+    def run(self):
+        import comtypes
+        comtypes.CoInitializeEx(comtypes.COINIT_MULTITHREADED)
+        try:
+            self._loop()
+        except Exception as e:
+            self.error = str(e) or e.__class__.__name__
+        finally:
+            comtypes.CoUninitialize()
+
+    def _loop(self):
+        import ctypes
+        enumerator = AudioUtilities.GetDeviceEnumerator()
+        src = self._client(enumerator, self.src_id)
+        dst = self._client(enumerator, self.dst_id)
+        fmt = src.GetMixFormat()
+        block = fmt.contents.nBlockAlign
+        rate = fmt.contents.nSamplesPerSec
+        src.Initialize(0, self.LOOPBACK, 2_000_000, 0, fmt, None)
+        dst.Initialize(0, self.AUTOCONVERT, 2_000_000, 0, fmt, None)
+        cap = src.GetService(IAudioCaptureClientMx._iid_).QueryInterface(IAudioCaptureClientMx)
+        ren = dst.GetService(IAudioRenderClientMx._iid_).QueryInterface(IAudioRenderClientMx)
+        size = dst.GetBufferSize()
+        max_queue = int(rate * self.MAX_LATENCY)
+        dst.Start()
+        src.Start()
+        try:
+            while not self.stop_event.wait(0.005):
+                while cap.GetNextPacketSize():
+                    data, frames, flags, _pos, _qpc = cap.GetBuffer()
+                    queued = dst.GetCurrentPadding()
+                    n = min(frames, size - queued) if queued < max_queue else 0
+                    if n > 0:
+                        out = ren.GetBuffer(n)
+                        if flags & 2:  # AUDCLNT_BUFFERFLAGS_SILENT
+                            ren.ReleaseBuffer(n, 2)
+                        else:
+                            ctypes.memmove(out, data, n * block)
+                            ren.ReleaseBuffer(n, 0)
+                            self.copied += n
+                    cap.ReleaseBuffer(frames)
+        finally:
+            src.Stop()
+            dst.Stop()
+
+    def stop(self):
+        self.stop_event.set()
 
 
 BUSES_FILE = os.path.join(CONFIG_DIR, "buses.json")
@@ -4219,6 +4349,9 @@ class Mixer(QWidget):
         self.midi.open_all()
         self.plugin_api = PluginAPI(self)
         self.plugins = []
+        self.mirrors = load_mirrors()
+        self.mirror_threads = {}
+        self._mirror_retry = {}
         self.buses = load_buses()
         self.bus_strips = {}
         self._bus_save_timer = QTimer(self, singleShot=True, interval=500,
@@ -4630,6 +4763,7 @@ class Mixer(QWidget):
         self.check_ads()
         self.track_device_volumes()
         self.sync_buses()
+        self.sync_mirrors()
         self.run_plugins()
 
     def run_plugins(self):
@@ -4834,7 +4968,8 @@ class Mixer(QWidget):
             if strip is None:
                 flow = self.sources[name].get("device")
                 if flow:
-                    strip = DeviceStrip(name, flow, self.config.get(name, ""), self.start_bind)
+                    strip = DeviceStrip(name, flow, self.config.get(name, ""), self.start_bind,
+                                        self.show_device_menu if flow == "out" else None)
                 else:
                     strip = Strip(
                         name, self.sources[name].get("exe"),
@@ -4974,6 +5109,8 @@ class Mixer(QWidget):
         self._closed = True
         self.save_window()
         self.midi.close_all()
+        for t in self.mirror_threads.values():
+            t.stop()
         save_buses(self.buses)
         self.guard.release_all()
         self.restore_solo()
@@ -5357,6 +5494,54 @@ class Mixer(QWidget):
                 s.SimpleAudioVolume.SetMasterVolume(level, None)
             except Exception:
                 pass
+
+    def show_device_menu(self, name, pos):
+        """Tasto destro su un'uscita: duplica tutto il suo audio su un'altra uscita."""
+        outs = [n for n, i in self.sources.items() if i.get("device") == "out" and n != name]
+        menu = QMenu(self)
+        menu.addAction(tr("Duplica l'audio anche su")).setEnabled(False)
+        actions = {}
+        for dst in outs:
+            on = [name, dst] in self.mirrors
+            act = menu.addAction(self.display_name(dst).replace("&", "&&"))
+            act.setCheckable(True)
+            act.setChecked(on)
+            act.setEnabled(on or (dst in self.dev_sessions and mirror_allowed(self.mirrors, name, dst)))
+            actions[act] = dst
+        if not outs:
+            menu.addAction(tr("(nessun'altra uscita)")).setEnabled(False)
+        chosen = menu.exec(pos)
+        if chosen in actions:
+            pair = [name, actions[chosen]]
+            if pair in self.mirrors:
+                self.mirrors.remove(pair)
+            else:
+                self.mirrors.append(pair)
+            save_mirrors(self.mirrors)
+            self.sync_mirrors()
+
+    def sync_mirrors(self):
+        """Avvia le duplicazioni configurate i cui due dispositivi sono collegati e ferma le
+        altre. Una che si interrompe (dispositivo scollegato, formato non accettato) riprova
+        dopo 5 secondi; l'errore va nel log una volta sola."""
+        now = time.monotonic()
+        wanted = {(s, d) for s, d in self.mirrors if s in self.dev_sessions and d in self.dev_sessions}
+        for key in list(self.mirror_threads):
+            t = self.mirror_threads[key]
+            if key not in wanted or not t.is_alive():
+                t.stop()
+                del self.mirror_threads[key]
+                if t.error and key in wanted:
+                    if key not in self._mirror_retry:
+                        log_error(f"Duplicazione {key[0]} -> {key[1]} interrotta: {t.error}")
+                    self._mirror_retry[key] = now + 5
+        for key in wanted:
+            if key not in self.mirror_threads and now >= self._mirror_retry.get(key, 0):
+                t = OutputMirror(key[0][len(DEV_PREFIX):], key[1][len(DEV_PREFIX):])
+                t.start()
+                self.mirror_threads[key] = t
+        for key in [k for k in self._mirror_retry if k not in wanted]:
+            del self._mirror_retry[key]
 
     def save_buses_later(self):
         self._bus_save_timer.start()

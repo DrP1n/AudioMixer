@@ -61,6 +61,15 @@ class ProfileTest(unittest.TestCase):
             mixer.read_profile({"presets": {}})
 
 
+class MirrorTest(unittest.TestCase):
+    def test_no_loops(self):
+        pairs = [["A", "B"], ["B", "C"]]
+        self.assertTrue(mixer.mirror_allowed(pairs, "A", "D"))
+        self.assertFalse(mixer.mirror_allowed(pairs, "C", "A"))  # A->B->C->A
+        self.assertFalse(mixer.mirror_allowed(pairs, "B", "A"))
+        self.assertFalse(mixer.mirror_allowed(pairs, "A", "A"))
+
+
 class MiscTest(unittest.TestCase):
     def test_versions(self):
         self.assertGreater(mixer.version_tuple("v0.4.0"), mixer.version_tuple("0.3.9"))
