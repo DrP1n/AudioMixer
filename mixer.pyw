@@ -1264,7 +1264,7 @@ class Bridge(QObject):
 
 
 APP_ID = "audiomixer-single-instance"
-APP_VERSION = "0.6.3"
+APP_VERSION = "0.6.4"
 # "utente/repository" su GitHub: con le release pubblicate li', il mixer avvisa delle versioni nuove
 UPDATE_REPO = "DrP1n/AudioMixer"
 
@@ -1881,11 +1881,29 @@ def cancel_fade(sessions):
     FADER.cancel_ramp(sessions)
 
 
-AD_TITLES = {"advertisement", "spotify", "spotify free", "pubblicità", "werbung", "publicidad"}
+AD_FILE = os.path.join(CONFIG_DIR, "ad_recovery.json")
+
+
+def load_ad_recovery():
+    """App che il mixer aveva mutato per una pubblicita' e non ha potuto smutare (chiusura brusca)."""
+    try:
+        return {n: None for n in read_json(AD_FILE) if isinstance(n, str)}
+    except Exception:
+        return {}
+
+
+def save_ad_recovery(names):
+    try:
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        with safe_write(AD_FILE) as f:
+            json.dump(sorted(names), f, ensure_ascii=False)
+    except Exception:
+        pass
 
 
 def window_titles():
-    """Titoli delle finestre visibili, per processo: {pid: [titolo, ...]}."""
+    """Titoli delle finestre, per processo: {pid: [titolo, ...]}. Anche quella nascosta di Spotify
+    chiuso nella tray (le altre finestre nascoste sono di servizio)."""
     import ctypes
     from ctypes import wintypes
     user32 = ctypes.windll.user32
@@ -1893,7 +1911,9 @@ def window_titles():
     proto = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 
     def visit(hwnd, _):
-        if user32.IsWindowVisible(hwnd):
+        cls = ctypes.create_unicode_buffer(64)
+        user32.GetClassNameW(hwnd, cls, 64)
+        if user32.IsWindowVisible(hwnd) or cls.value == "Chrome_WidgetWin_1":
             n = user32.GetWindowTextLengthW(hwnd)
             if n:
                 buf = ctypes.create_unicode_buffer(n + 1)
@@ -1907,9 +1927,15 @@ def window_titles():
     return titles
 
 
-def is_ad_title(titles):
-    """Spotify Free mostra "Advertisement" (o solo "Spotify") nel titolo durante le pubblicita'."""
-    return any(t.strip().lower() in AD_TITLES for t in titles)
+def ad_state(titles):
+    """Dai titoli di Spotify: False = musica ("Artista - Brano"), True = pubblicita' ("Advertisement",
+    "Spotify", il nome dello sponsor...), None = in pausa o non si sa (resta com'era)."""
+    titles = [t.strip() for t in titles if t.strip()]
+    if any(" - " in t for t in titles):
+        return False
+    if not titles or any(t.lower() in ("spotify free", "spotify premium") for t in titles):
+        return None
+    return True
 
 
 def limit_pct(info):
@@ -5069,9 +5095,8 @@ class Mixer(QWidget):
         self.default_in = None
         self._known_outs = None
         self._tray_mic_muted = False
-        self.ad_muted = set()
-        self._ad_state = {}
-        self._pid_names = {}
+        self.ad_muted = load_ad_recovery()
+        self._ad_seen = {}
         self._app_out = {}
         self._devvol_skip_until = 0.0
         self.midi_bindings = load_midi()
@@ -5490,7 +5515,7 @@ class Mixer(QWidget):
                 self.last_audio[name] = {
                     "volume": round(self.guard.user_volume(
                         name, self.fader.volume_state(sessions, vol.GetMasterVolume())), 4),
-                    "mute": self.solo_prev.get(
+                    "mute": name not in self.ad_muted and self.solo_prev.get(
                         name, self.fader.mute_state(sessions, bool(vol.GetMute())))}
             except Exception:
                 pass
@@ -5601,53 +5626,68 @@ class Mixer(QWidget):
             del self._app_out[name]
 
     def check_ads(self):
-        """Mute automatico delle pubblicita': quando il titolo di un'app diventa quello di una
-        pubblicita' la muta, e la smuta quando torna la musica. Tocca solo le app mutate da qui,
-        e solo al cambio: se durante la pubblicita' l'utente smuta, resta smutata."""
-        # shortcut: se il mixer va in crash durante una pubblicita' l'app resta mutata; file di recupero se capita
-        if len(self._pid_names) > 2000:
-            self._pid_names.clear()
+        """Mute automatico delle pubblicita' di Spotify, su tutte le sue sessioni (puo' averne una
+        per dispositivo, e aprirne altre durante la pubblicita'). Rimette solo cio' che ha mutato;
+        ogni sessione una volta sola: se durante la pubblicita' l'utente smuta, resta smutata.
+        ad_muted = {app: sessioni mutate da qui, o None = tutte (dopo una chiusura brusca)}."""
         if not self.settings.get("ad_mute"):
-            if self.ad_muted:
-                for name in self.ad_muted:
-                    fade_mute(self.groups.get(name, []), False, name)
-                self.ad_muted.clear()
-            self._ad_state.clear()
+            for name in list(self.ad_muted):
+                self.end_ad(name)
+            self._ad_seen.clear()
+            return
+        names = [n for n in self.groups if n.lower() == "spotify"]
+        if not names:
             return
         try:
             titles = window_titles()
         except Exception:
             return
-        by_app = defaultdict(list)  # l'audio puo' venire da un processo figlio senza finestra
+        found = []  # l'audio puo' venire da un processo senza finestra
         for pid, ts in titles.items():
-            if pid not in self._pid_names:
-                try:
-                    n = psutil.Process(pid).name()
-                    self._pid_names[pid] = n[:-4] if n.lower().endswith(".exe") else n
-                except psutil.Error:
-                    self._pid_names[pid] = ""
-            by_app[self._pid_names[pid]].extend(ts)
-        for name, sessions in self.groups.items():
-            if name.startswith(DEV_PREFIX):
+            try:
+                if psutil.Process(pid).name().lower() == "spotify.exe":
+                    found.extend(ts)
+            except psutil.Error:
+                pass
+        ad = ad_state(found)
+        for name in names:
+            if ad is False:
+                self._ad_seen.pop(name, None)
+                self.end_ad(name)
+            elif ad or name in self._ad_seen:
+                self._mute_ad_sessions(name)
+
+    def _mute_ad_sessions(self, name):
+        seen = self._ad_seen.setdefault(name, set())
+        for s in self.groups[name]:
+            key = session_key(s)
+            if key in seen:
                 continue
-            ad = is_ad_title(by_app.get(name, []))
-            was = self._ad_state.get(name, False)
-            self._ad_state[name] = ad
-            if ad and not was:
-                try:
-                    muted = shown_mute(sessions, bool(sessions[0].SimpleAudioVolume.GetMute()))
-                except Exception:
-                    continue
-                if not muted:
-                    fade_mute(sessions, True, name)
-                    self.ad_muted.add(name)
-            elif was and not ad and name in self.ad_muted:
-                self.ad_muted.discard(name)
-                fade_mute(sessions, False, name)
-        for name in list(self._ad_state):
-            if name not in self.groups:
-                self._ad_state.pop(name)
-                self.ad_muted.discard(name)
+            seen.add(key)
+            try:
+                muted = shown_mute([s], bool(s.SimpleAudioVolume.GetMute()))
+            except Exception:
+                continue
+            if muted:
+                continue
+            fade_mute([s], True, name)
+            if self.ad_muted.get(name, set()) is not None:
+                self.ad_muted.setdefault(name, set()).add(key)
+            save_ad_recovery(self.ad_muted)
+
+    def end_ad(self, name):
+        """Finita la pubblicita': smuta le sessioni mutate da qui. Con il solo attivo ci pensa il
+        solo, quando viene tolto."""
+        if name not in self.ad_muted or not self.groups.get(name):
+            return
+        keys = self.ad_muted.pop(name)
+        save_ad_recovery(self.ad_muted)
+        if name in self.solo_prev:
+            self.solo_prev[name] = False
+            save_solo_recovery(self.solo_prev)
+            return
+        fade_mute([s for s in self.groups[name] if keys is None or session_key(s) in keys],
+                  False, name)
 
     def capture_devices(self):
         """Dispositivi di ingresso (microfoni) attivi; l'elenco si aggiorna ogni 5 secondi."""
@@ -5949,8 +5989,8 @@ class Mixer(QWidget):
         save_buses(self.buses)
         self.guard.release_all()
         self.restore_solo()
-        for name in self.ad_muted:
-            fade_mute(self.groups.get(name, []), False, name)
+        for name in list(self.ad_muted):
+            self.end_ad(name)
         self.fader.finish_all()
         self.tray.hide()
 
@@ -7172,7 +7212,7 @@ class Mixer(QWidget):
                     vol = sessions[0].SimpleAudioVolume
                     entry["volume"] = round(self.guard.user_volume(
                         name, self.fader.volume_state(sessions, vol.GetMasterVolume())), 4)
-                    entry["mute"] = self.solo_prev.get(
+                    entry["mute"] = name not in self.ad_muted and self.solo_prev.get(
                         name, self.fader.mute_state(sessions, bool(vol.GetMute())))
                 except Exception:
                     pass

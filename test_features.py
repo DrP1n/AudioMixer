@@ -8,6 +8,7 @@ import json
 import os
 import tempfile
 import unittest
+from types import SimpleNamespace
 
 _path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mixer.pyw")
 _loader = importlib.machinery.SourceFileLoader("mixer", _path)
@@ -38,11 +39,79 @@ class MidiTest(unittest.TestCase):
 
 
 class AdTest(unittest.TestCase):
+    """check_ads con Spotify finto: due sessioni audio (due dispositivi) e titoli decisi qui."""
+
+    def setUp(self):
+        self.titles = []
+        self.old = {k: getattr(mixer, k) for k in ("window_titles", "fade_mute", "shown_mute",
+                                                  "save_ad_recovery", "save_solo_recovery")}
+        self.old_proc = mixer.psutil.Process
+        mixer.window_titles = lambda: {1: self.titles}
+        mixer.psutil.Process = lambda pid: SimpleNamespace(name=lambda: "Spotify.exe")
+        mixer.shown_mute = lambda sessions, actual: actual
+        mixer.save_ad_recovery = mixer.save_solo_recovery = lambda names: None
+
+        def fade_mute(sessions, muted, name=None):
+            for s in sessions:
+                s.muted = muted
+        mixer.fade_mute = fade_mute
+        self.a, self.b = self.session("a"), self.session("b")
+        self.w = SimpleNamespace(settings={"ad_mute": True}, groups={"Spotify": [self.a, self.b]},
+                                 ad_muted={}, _ad_seen={}, solo_prev={})
+        for f in ("end_ad", "_mute_ad_sessions"):
+            setattr(self.w, f, getattr(mixer.Mixer, f).__get__(self.w))
+
+    def tearDown(self):
+        for k, v in self.old.items():
+            setattr(mixer, k, v)
+        mixer.psutil.Process = self.old_proc
+
+    @staticmethod
+    def session(key, muted=False):
+        s = SimpleNamespace(InstanceIdentifier=key, muted=muted)
+        s.SimpleAudioVolume = SimpleNamespace(GetMute=lambda: s.muted)
+        return s
+
+    def step(self, title):
+        self.titles = [title]
+        mixer.Mixer.check_ads(self.w)
+        return [s.muted for s in self.w.groups.get("Spotify", [])]
+
     def test_titles(self):
-        self.assertTrue(mixer.is_ad_title(["Advertisement"]))
-        self.assertTrue(mixer.is_ad_title(["Spotify Free"]))
-        self.assertFalse(mixer.is_ad_title(["Artist - Song"]))
-        self.assertFalse(mixer.is_ad_title([]))
+        for t in ("Advertisement", "Spotify", "Nome Sponsor"):
+            self.assertIs(mixer.ad_state([t]), True)
+        self.assertIs(mixer.ad_state(["Artist - Song", "Spotify"]), False)
+        for t in ([], ["Spotify Free"], ["Spotify Premium"]):
+            self.assertIsNone(mixer.ad_state(t))
+
+    def test_both_sessions_and_pause(self):
+        self.assertEqual(self.step("Artist - Song"), [False, False])
+        self.assertEqual(self.step("Spotify Free"), [False, False])  # pausa, non pubblicita'
+        self.assertEqual(self.step("Advertisement"), [True, True])
+        self.assertEqual(self.step("Spotify Free"), [True, True])  # pausa durante la pubblicita'
+        self.assertEqual(self.step("Artist - Song"), [False, False])
+
+    def test_first_session_already_muted_by_user(self):
+        self.a.muted = True
+        self.assertEqual(self.step("Advertisement"), [True, True])
+        self.assertEqual(self.step("Artist - Song"), [True, False])
+
+    def test_session_opened_during_ad_and_user_unmute(self):
+        self.step("Advertisement")
+        self.b.muted = False  # l'utente smuta: resta cosi'
+        self.w.groups["Spotify"].append(self.session("c"))
+        self.assertEqual(self.step("Advertisement"), [True, False, True])
+        self.assertEqual(self.step("Artist - Song"), [False, False, False])
+
+    def test_sessions_vanish_and_crash_recovery(self):
+        self.step("Advertisement")
+        self.w.groups = {}
+        self.step("Advertisement")
+        self.w.groups = {"Spotify": [self.a, self.b]}
+        self.assertEqual(self.step("Artist - Song"), [False, False])
+        self.a.muted = self.b.muted = True
+        self.w.ad_muted = {"Spotify": None}  # ripartito dopo una chiusura brusca
+        self.assertEqual(self.step("Artist - Song"), [False, False])
 
 
 class ProfileTest(unittest.TestCase):
