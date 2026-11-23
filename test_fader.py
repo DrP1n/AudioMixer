@@ -76,7 +76,8 @@ def make_fader(ms=200):
     cfg = tempfile.mkdtemp()
     g = dict(QObject=QObject, QTimer=QTimer, time=time, json=json, os=os,
              CONFIG_DIR=cfg, FADE_FILE=os.path.join(cfg, "fade.json"), FADE_MAX_MS=3000,
-             SYSTEM_NAME="Suoni di sistema", _channel_iface=lambda s: getattr(s, "ch", None))
+             SYSTEM_NAME="Suoni di sistema", _channel_iface=lambda s: getattr(s, "ch", None),
+             read_json=read_json, safe_write=lambda p: open(p, "w", encoding="utf-8"))
     exec(code, g)
     return g["Fader"](None, ms), g["FADE_FILE"]
 

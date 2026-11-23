@@ -18,6 +18,7 @@ import time
 import threading
 import contextlib
 import subprocess
+import shutil
 import tempfile
 from collections import defaultdict
 from string import Template
@@ -662,10 +663,46 @@ def resource_path(name):
     return os.path.join(base, name)
 
 
+def read_json(path):
+    """Legge un file di impostazioni. Se e' rovinato lo mette da parte (.corrupt) e usa la copia
+    di sicurezza (.bak): mai ripartire da zero scrivendo sopra ai dati dell'utente."""
+    for attempt in range(4):
+        try:
+            with open(path, encoding="utf-8-sig") as f:
+                return json.load(f)
+        except FileNotFoundError:
+            raise
+        except OSError:  # file occupato per un attimo (antivirus, backup)
+            if attempt == 3:
+                raise
+            time.sleep(0.15)
+        except ValueError:
+            break
+    os.replace(path, path + ".corrupt")
+    log_error(f"File rovinato, uso la copia di sicurezza: {path}")
+    with open(path + ".bak", encoding="utf-8-sig") as f:
+        data = json.load(f)
+    shutil.copy2(path + ".bak", path)
+    return data
+
+
+@contextlib.contextmanager
+def safe_write(path):
+    """Scrittura che non lascia mai il file a meta': prima un file temporaneo, poi lo scambio.
+    La versione di prima resta in .bak."""
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        yield f
+        f.flush()
+        os.fsync(f.fileno())
+    if os.path.exists(path):
+        shutil.copy2(path, path + ".bak")
+    os.replace(tmp, path)
+
+
 def load_config():
     try:
-        with open(CONFIG, encoding="utf-8") as f:
-            return json.load(f)
+        return read_json(CONFIG)
     except Exception:
         return {}
 
@@ -673,7 +710,7 @@ def load_config():
 def save_config(cfg):
     try:
         os.makedirs(CONFIG_DIR, exist_ok=True)
-        with open(CONFIG, "w", encoding="utf-8") as f:
+        with safe_write(CONFIG) as f:
             json.dump(cfg, f, indent=2, ensure_ascii=False)
     except Exception:
         pass
@@ -685,8 +722,7 @@ SOURCES_FILE = os.path.join(CONFIG_DIR, "sources.json")
 def load_sources():
     """{nome app: {"visible": bool, "exe": percorso}}"""
     try:
-        with open(SOURCES_FILE, encoding="utf-8") as f:
-            data = json.load(f)
+        data = read_json(SOURCES_FILE)
         return data if isinstance(data, dict) else {}
     except Exception:
         return {}
@@ -695,7 +731,7 @@ def load_sources():
 def save_sources(sources):
     try:
         os.makedirs(CONFIG_DIR, exist_ok=True)
-        with open(SOURCES_FILE, "w", encoding="utf-8") as f:
+        with safe_write(SOURCES_FILE) as f:
             json.dump(sources, f, indent=2, ensure_ascii=False)
     except Exception:
         pass
@@ -707,8 +743,7 @@ PENDING_FILE = os.path.join(CONFIG_DIR, "reset_pending.json")
 def load_pending():
     """Nomi delle fonti eliminate che vanno reimpostate alla prossima apparizione."""
     try:
-        with open(PENDING_FILE, encoding="utf-8") as f:
-            data = json.load(f)
+        data = read_json(PENDING_FILE)
         return set(data) if isinstance(data, list) else set()
     except Exception:
         return set()
@@ -717,7 +752,7 @@ def load_pending():
 def save_pending(names):
     try:
         os.makedirs(CONFIG_DIR, exist_ok=True)
-        with open(PENDING_FILE, "w", encoding="utf-8") as f:
+        with safe_write(PENDING_FILE) as f:
             json.dump(sorted(names), f, ensure_ascii=False)
     except Exception:
         pass
@@ -750,8 +785,7 @@ def load_settings():
     """Impostazioni salvate, con i valori di default se il file manca o e' rovinato."""
     data = dict(DEFAULT_SETTINGS)
     try:
-        with open(SETTINGS_FILE, encoding="utf-8") as f:
-            saved = json.load(f)
+        saved = read_json(SETTINGS_FILE)
         if isinstance(saved, dict):
             for k, v in saved.items():
                 if k in DEFAULT_SETTINGS and type(v) is type(DEFAULT_SETTINGS[k]):
@@ -775,7 +809,7 @@ def load_settings():
 def save_settings(settings):
     try:
         os.makedirs(CONFIG_DIR, exist_ok=True)
-        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+        with safe_write(SETTINGS_FILE) as f:
             json.dump(settings, f, indent=2)
     except Exception:
         pass
@@ -806,6 +840,25 @@ def _log_excepthook(exc_type, exc, tb):
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 APPROVED_KEY = r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"
 RUN_NAME = "AudioMixer"
+
+
+def tutorial_seen():
+    """True se il tour e' gia' partito su questa installazione, e da ora lo segna. Sta nel registro
+    e non nelle impostazioni: perdere quelle non deve farlo ricomparire. Lo toglie solo la
+    disinstallazione. La versione portatile non tocca il registro."""
+    if PORTABLE:
+        return False
+    try:
+        import winreg
+        with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, r"Software\AudioMixer", 0,
+                                winreg.KEY_READ | winreg.KEY_SET_VALUE) as k:
+            try:
+                return bool(winreg.QueryValueEx(k, "TutorialSeen")[0])
+            except FileNotFoundError:
+                winreg.SetValueEx(k, "TutorialSeen", 0, winreg.REG_DWORD, 1)
+                return False
+    except OSError:
+        return False
 
 
 def autostart_command():
@@ -899,8 +952,7 @@ SOLO_FILE = os.path.join(CONFIG_DIR, "solo_recovery.json")
 def load_solo_recovery():
     """Mute messi dal solo da rimettere a posto: {nome app: mute di prima}."""
     try:
-        with open(SOLO_FILE, encoding="utf-8") as f:
-            data = json.load(f)
+        data = read_json(SOLO_FILE)
         return {str(k): bool(v) for k, v in data.items()} if isinstance(data, dict) else {}
     except Exception:
         return {}
@@ -910,7 +962,7 @@ def save_solo_recovery(prev):
     try:
         if prev:
             os.makedirs(CONFIG_DIR, exist_ok=True)
-            with open(SOLO_FILE, "w", encoding="utf-8") as f:
+            with safe_write(SOLO_FILE) as f:
                 json.dump(prev, f, ensure_ascii=False)
         elif os.path.exists(SOLO_FILE):
             os.remove(SOLO_FILE)
@@ -952,8 +1004,7 @@ def _legacy_duck_group():
     """Il ducking a un gruppo solo, fino alla 0.3.5: se era configurato, diventa il primo gruppo
     la prima volta che si passa ai gruppi multipli."""
     try:
-        with open(SETTINGS_FILE, encoding="utf-8") as f:
-            raw = json.load(f)
+        raw = read_json(SETTINGS_FILE)
         if not isinstance(raw, dict):
             return None
         triggers, targets = raw.get("duck_triggers"), raw.get("duck_targets")
@@ -998,8 +1049,7 @@ def load_ducking():
     senza fermare il programma."""
     migrating = not os.path.exists(DUCKING_FILE)
     try:
-        with open(DUCKING_FILE, encoding="utf-8") as f:
-            data = parse_ducking(json.load(f))
+        data = parse_ducking(read_json(DUCKING_FILE))
     except Exception:
         data = parse_ducking(None)
     if migrating and not data["groups"]:
@@ -1013,7 +1063,7 @@ def load_ducking():
 def save_ducking(data):
     try:
         os.makedirs(CONFIG_DIR, exist_ok=True)
-        with open(DUCKING_FILE, "w", encoding="utf-8") as f:
+        with safe_write(DUCKING_FILE) as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
     except Exception:
         pass
@@ -1029,8 +1079,7 @@ def load_quick_devices():
     dispositivo, cosi' tornandoci si ritrova quello che aveva."""
     data = {"devices": [], "hotkey": "", "volumes": {}}
     try:
-        with open(QUICK_FILE, encoding="utf-8") as f:
-            raw = json.load(f)
+        raw = read_json(QUICK_FILE)
         if isinstance(raw, dict):
             seen = set()
             for d in raw.get("devices") or []:
@@ -1051,7 +1100,7 @@ def load_quick_devices():
 def save_quick_devices(data):
     try:
         os.makedirs(CONFIG_DIR, exist_ok=True)
-        with open(QUICK_FILE, "w", encoding="utf-8") as f:
+        with safe_write(QUICK_FILE) as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
     except Exception:
         pass
@@ -1060,8 +1109,7 @@ def save_quick_devices(data):
 def load_duck_recovery():
     """Volumi che il ducking aveva abbassato e non e' riuscito a rimettere: {app: volume voluto}."""
     try:
-        with open(DUCK_FILE, encoding="utf-8") as f:
-            data = json.load(f)
+        data = read_json(DUCK_FILE)
         if not isinstance(data, dict):
             return {}
         return {str(k): max(0.0, min(1.0, float(v))) for k, v in data.items()}
@@ -1073,7 +1121,7 @@ def save_duck_recovery(vols):
     try:
         if vols:
             os.makedirs(CONFIG_DIR, exist_ok=True)
-            with open(DUCK_FILE, "w", encoding="utf-8") as f:
+            with safe_write(DUCK_FILE) as f:
                 json.dump({k: round(v, 4) for k, v in vols.items()}, f, ensure_ascii=False)
         elif os.path.exists(DUCK_FILE):
             os.remove(DUCK_FILE)
@@ -1089,8 +1137,7 @@ def load_presets():
     applicare quando l'app compare})."""
     presets, pending = {}, {}
     try:
-        with open(PRESETS_FILE, encoding="utf-8") as f:
-            data = json.load(f)
+        data = read_json(PRESETS_FILE)
         if isinstance(data, dict):
             raw = data.get("presets")
             if isinstance(raw, dict):
@@ -1106,7 +1153,7 @@ def load_presets():
 def save_presets(presets, pending):
     try:
         os.makedirs(CONFIG_DIR, exist_ok=True)
-        with open(PRESETS_FILE, "w", encoding="utf-8") as f:
+        with safe_write(PRESETS_FILE) as f:
             json.dump({"presets": presets, "pending": pending}, f, indent=2, ensure_ascii=False)
     except Exception:
         pass
@@ -1140,8 +1187,7 @@ def load_automations():
     del suo tipo (app / device / time). Righe non valide vengono scartate senza fermare il
     programma."""
     try:
-        with open(AUTOMATIONS_FILE, encoding="utf-8") as f:
-            return parse_automations(json.load(f))
+        return parse_automations(read_json(AUTOMATIONS_FILE))
     except Exception:
         return parse_automations(None)
 
@@ -1200,7 +1246,7 @@ def read_profile(raw):
 def save_automations(data):
     try:
         os.makedirs(CONFIG_DIR, exist_ok=True)
-        with open(AUTOMATIONS_FILE, "w", encoding="utf-8") as f:
+        with safe_write(AUTOMATIONS_FILE) as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
     except Exception:
         pass
@@ -1218,7 +1264,7 @@ class Bridge(QObject):
 
 
 APP_ID = "audiomixer-single-instance"
-APP_VERSION = "0.6.2"
+APP_VERSION = "0.6.3"
 # "utente/repository" su GitHub: con le release pubblicate li', il mixer avvisa delle versioni nuove
 UPDATE_REPO = "DrP1n/AudioMixer"
 
@@ -1602,8 +1648,7 @@ FADE_MAX_MS = 3000
 def load_fade_recovery():
     """App rimaste a meta' dissolvenza (mixer chiuso di colpo): i loro canali vanno rimessi al 100%."""
     try:
-        with open(FADE_FILE, encoding="utf-8") as f:
-            data = json.load(f)
+        data = read_json(FADE_FILE)
         return {n for n in data if isinstance(n, str)} if isinstance(data, list) else set()
     except Exception:
         return set()
@@ -1612,7 +1657,7 @@ def load_fade_recovery():
 def save_fade_recovery(names):
     try:
         os.makedirs(CONFIG_DIR, exist_ok=True)
-        with open(FADE_FILE, "w", encoding="utf-8") as f:
+        with safe_write(FADE_FILE) as f:
             json.dump(sorted(names), f, ensure_ascii=False)
     except Exception:
         pass
@@ -2612,8 +2657,7 @@ def load_midi():
     """Controlli MIDI assegnati: {"cc:<canale>:<numero>" o "note:<canale>:<numero>": app}.
     Un CC (manopola, fader) muove il volume dell'app; una nota (pulsante) la muta / smuta."""
     try:
-        with open(MIDI_FILE, encoding="utf-8") as f:
-            raw = json.load(f)
+        raw = read_json(MIDI_FILE)
         return {k: v for k, v in raw.items() if isinstance(k, str) and isinstance(v, str)
                 and re.fullmatch(r"(cc|note):\d+:\d+", k)} if isinstance(raw, dict) else {}
     except Exception:
@@ -2623,7 +2667,7 @@ def load_midi():
 def save_midi(bindings):
     try:
         os.makedirs(CONFIG_DIR, exist_ok=True)
-        with open(MIDI_FILE, "w", encoding="utf-8") as f:
+        with safe_write(MIDI_FILE) as f:
             json.dump(bindings, f, indent=2, ensure_ascii=False)
     except Exception:
         pass
@@ -2812,8 +2856,7 @@ MIRRORS_FILE = os.path.join(CONFIG_DIR, "mirrors.json")
 def load_mirrors():
     """Uscite duplicate: [[sorgente, destinazione], ...] (nomi "dev:<id>")."""
     try:
-        with open(MIRRORS_FILE, encoding="utf-8") as f:
-            raw = json.load(f)
+        raw = read_json(MIRRORS_FILE)
         return [[s, d] for s, d in raw if isinstance(s, str) and isinstance(d, str) and s != d]
     except Exception:
         return []
@@ -2822,7 +2865,7 @@ def load_mirrors():
 def save_mirrors(pairs):
     try:
         os.makedirs(CONFIG_DIR, exist_ok=True)
-        with open(MIRRORS_FILE, "w", encoding="utf-8") as f:
+        with safe_write(MIRRORS_FILE) as f:
             json.dump(pairs, f, indent=2)
     except Exception:
         pass
@@ -2919,8 +2962,7 @@ def load_buses():
     Un'app sta in un gruppo solo."""
     buses, taken = [], set()
     try:
-        with open(BUSES_FILE, encoding="utf-8") as f:
-            raw = json.load(f)
+        raw = read_json(BUSES_FILE)
         for b in raw if isinstance(raw, list) else []:
             if not isinstance(b, dict) or not isinstance(b.get("name"), str) or not b["name"]:
                 continue
@@ -2942,7 +2984,7 @@ def load_buses():
 def save_buses(buses):
     try:
         os.makedirs(CONFIG_DIR, exist_ok=True)
-        with open(BUSES_FILE, "w", encoding="utf-8") as f:
+        with safe_write(BUSES_FILE) as f:
             json.dump(buses, f, indent=2, ensure_ascii=False)
     except Exception:
         pass
@@ -5049,7 +5091,6 @@ class Mixer(QWidget):
                                       timeout=lambda: save_buses(self.buses))
         self._enumerator = None
         self._tick_n = 0
-        self.restore_window()
         self.strips = {}
         self.rows = {}
         self.groups = {}
@@ -5293,6 +5334,7 @@ class Mixer(QWidget):
             status.addWidget(lab)
         status.addStretch(1)
         root.addLayout(status)
+        self.restore_window()  # dopo aver creato i pannelli: ne usa i pulsanti per le misure
         self.apply_panel()
 
         self.tray = QSystemTrayIcon(QIcon(resource_path("icon.ico")), self)
@@ -5774,7 +5816,8 @@ class Mixer(QWidget):
             QTimer.singleShot(0, self.apply_panel)
         if not self.settings.get("tutorial_done"):
             self.set_option("tutorial_done", True)
-            QTimer.singleShot(400, self.show_tutorial)
+            if not tutorial_seen():
+                QTimer.singleShot(400, self.show_tutorial)
 
     def show_tutorial(self):
         """Tour guidato: al primo avvio e dal pulsante Guida rapida nelle Impostazioni."""
@@ -5851,7 +5894,7 @@ class Mixer(QWidget):
         try:
             os.makedirs(CONFIG_DIR, exist_ok=True)
             data = self.saveGeometry().toBase64().data().decode("ascii")
-            with open(WINDOW_FILE, "w", encoding="utf-8") as f:
+            with safe_write(WINDOW_FILE) as f:
                 json.dump({"geometry": data, "panel_open": self._panel_open,
                            "fonti_width": self._fonti_w, "devices_open": self._dev_open}, f)
         except Exception:
@@ -5859,8 +5902,7 @@ class Mixer(QWidget):
 
     def restore_window(self):
         try:
-            with open(WINDOW_FILE, encoding="utf-8") as f:
-                saved = json.load(f)
+            saved = read_json(WINDOW_FILE)
             self._panel_open = bool(saved.get("panel_open", True))
             self._dev_open = bool(saved.get("devices_open", False))
             self.update_dev_section()

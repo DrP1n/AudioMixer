@@ -4,7 +4,9 @@ Servono le librerie di requirements.txt (non serve audio).   Avvio:  python test
 """
 import importlib.machinery
 import importlib.util
+import json
 import os
+import tempfile
 import unittest
 
 _path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mixer.pyw")
@@ -68,6 +70,37 @@ class MirrorTest(unittest.TestCase):
         self.assertFalse(mixer.mirror_allowed(pairs, "C", "A"))  # A->B->C->A
         self.assertFalse(mixer.mirror_allowed(pairs, "B", "A"))
         self.assertFalse(mixer.mirror_allowed(pairs, "A", "A"))
+
+
+class SafeFilesTest(unittest.TestCase):
+    def setUp(self):
+        self.path = os.path.join(tempfile.mkdtemp(), "x.json")
+        mixer.log_error = lambda text: None
+
+    def save(self, data):
+        with mixer.safe_write(self.path) as f:
+            json.dump(data, f)
+
+    def test_corrupt_file_falls_back_to_backup(self):
+        self.save({"v": 1})
+        self.save({"v": 2})
+        open(self.path, "w").write('{"v":')  # spegnimento a meta' scrittura
+        self.assertEqual(mixer.read_json(self.path), {"v": 1})
+        self.assertTrue(os.path.exists(self.path + ".corrupt"))
+        self.assertEqual(mixer.read_json(self.path), {"v": 1})
+
+    def test_failed_write_keeps_old_file(self):
+        self.save({"v": 1})
+        with self.assertRaises(TypeError):
+            self.save({"v": object()})
+        self.assertEqual(mixer.read_json(self.path), {"v": 1})
+
+    def test_removed_file_does_not_come_back_from_backup(self):
+        self.save([1])
+        self.save([2])
+        os.remove(self.path)
+        with self.assertRaises(FileNotFoundError):
+            mixer.read_json(self.path)
 
 
 class MiscTest(unittest.TestCase):

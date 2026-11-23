@@ -183,6 +183,7 @@ Section "Uninstall"
   ; l'avvio con Windows impostato dal programma (utente corrente)
   DeleteRegValue HKCU "${RUN_KEY}" "${APPNAME}"
   DeleteRegValue HKCU "${APPROVED_KEY}" "${APPNAME}"
+  DeleteRegKey HKCU "Software\${APPNAME}"
 
   ; impostazioni, preset e tasti dell'utente: si eliminano solo se lo chiede
   SetShellVarContext current
