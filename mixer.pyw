@@ -17,6 +17,12 @@ from collections import defaultdict
 from string import Template
 from ctypes import c_float, c_uint32, POINTER, HRESULT
 
+# Python installato nella radice di un disco (es. D:\) cerca le librerie in "D:Lib\site-packages",
+# relativo alla cartella di lavoro: all'avvio di Windows (cartella System32) non le trova.
+_site = os.path.join(os.path.dirname(sys.executable), "Lib", "site-packages")
+if not getattr(sys, "frozen", False) and os.path.isdir(_site) and _site not in sys.path:
+    sys.path.append(_site)
+
 import keyboard
 import psutil
 from PySide6.QtCore import (Qt, QTimer, QRectF, QFileInfo, QObject, Signal, QByteArray, QPointF,
@@ -578,7 +584,11 @@ def autostart_enabled():
 def refresh_autostart_entry():
     """Se la voce di avvio c'e' ma punta a un percorso vecchio (script spostato, Python
     aggiornato, .exe rinominato) la riscrive con quello attuale. Non la riattiva se l'utente
-    l'ha disattivata da Gestione attivita'."""
+    l'ha disattivata da Gestione attivita'.
+    Solo dall'.exe: lanciando mixer.pyw per provarlo non si deve rubare la voce al programma
+    installato."""
+    if not getattr(sys, "frozen", False):
+        return
     try:
         import winreg
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0,
@@ -949,7 +959,7 @@ class Bridge(QObject):
 
 
 APP_ID = "audiomixer-single-instance"
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.4.1"
 # "utente/repository" su GitHub: con le release pubblicate li', il mixer avvisa delle versioni nuove
 UPDATE_REPO = ""
 
@@ -1168,7 +1178,8 @@ class Meter(QWidget):
                 if t < y_lo:
                     p.fillRect(QRectF(x, t, self.BAR_W, y_lo - t), QColor(bright))
             if self.hold[i] > -60:
-                col = next(b for lo, hi, d, b in self.ZONES if self.hold[i] <= hi)
+                # un picco sopra 0 dB (audio che satura) resta rosso
+                col = next((b for lo, hi, d, b in self.ZONES if self.hold[i] <= hi), self.ZONES[-1][3])
                 p.setPen(QPen(QColor(col), 2))
                 yh = int(y(self.hold[i]))
                 p.drawLine(x, yh, x + self.BAR_W, yh)
