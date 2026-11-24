@@ -179,7 +179,7 @@ class MiscTest(unittest.TestCase):
                 for n in ("app", "dev:cuffie")}
         w = SimpleNamespace(settings={"hide_idle": True}, search=SimpleNamespace(text=lambda: ""),
                             sources={"app": {"alias": "Mia"}, "dev:cuffie": {"dev_name": "Cuffie"}},
-                            rows=rows, groups={})
+                            rows=rows, groups={}, dev_heads={})
         w.display_name = lambda n: mixer.Mixer.display_name(w, n)
         mixer.Mixer.apply_search(w)
         self.assertEqual(shown, {"app": False, "dev:cuffie": False})

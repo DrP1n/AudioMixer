@@ -1243,7 +1243,7 @@ class Bridge(QObject):
 
 
 APP_ID = "audiomixer-single-instance"
-APP_VERSION = "0.6.6"
+APP_VERSION = "0.6.7"
 # "utente/repository" su GitHub: con le release pubblicate li', il mixer avvisa delle versioni nuove
 UPDATE_REPO = "DrP1n/AudioMixer"
 
@@ -5166,14 +5166,28 @@ class Mixer(QWidget):
                                  lambda n, b: self.move_source(n, b, same_kind=True))
         list_inner.setLayout(self.list_layout)
         self.list_inner = list_inner
-        self.dev_layout = QVBoxLayout()
-        self.dev_layout.setAlignment(Qt.AlignTop)
-        self.dev_layout.setContentsMargins(0, 0, 0, 0)
-        self.dev_layout.setSpacing(0)
-        self.dev_inner = ReorderArea(False, list_scroll, SourceRow,
-                                     "application/x-audiomixer-device",
-                                     lambda n, b: self.move_source(n, b, same_kind=True))
-        self.dev_inner.setLayout(self.dev_layout)
+        # i dispositivi: casse/cuffie e microfoni, ognuno col suo titolo e il suo riordino
+        self.dev_inner = QWidget()
+        dl = QVBoxLayout(self.dev_inner)
+        dl.setAlignment(Qt.AlignTop)
+        dl.setContentsMargins(0, 0, 0, 0)
+        dl.setSpacing(0)
+        self.dev_layouts, self.dev_heads = {}, {}
+        for flow, title in (("out", tr("Casse / cuffie")), ("in", tr("Microfoni"))):
+            head = QLabel(title)
+            head.setObjectName("sectionTitle")
+            head.setContentsMargins(sc(8), sc(8), 0, sc(2))
+            area = ReorderArea(False, list_scroll, SourceRow,
+                               "application/x-audiomixer-device-" + flow,
+                               lambda n, b: self.move_source(n, b, same_kind=True))
+            area.setObjectName("clear")
+            lay = QVBoxLayout(area)
+            lay.setAlignment(Qt.AlignTop)
+            lay.setContentsMargins(0, 0, 0, 0)
+            lay.setSpacing(0)
+            dl.addWidget(head)
+            dl.addWidget(area)
+            self.dev_layouts[flow], self.dev_heads[flow] = lay, head
         sections = QWidget()
         sections.setObjectName("clear")
         list_inner.setObjectName("clear")
@@ -5347,14 +5361,14 @@ class Mixer(QWidget):
         return self.sources.get(name, {}).get("dev_name") or name
 
     def _row_layout(self, name):
-        return self.dev_layout if self.sources.get(name, {}).get("device") else self.list_layout
+        return self.dev_layouts.get(self.sources.get(name, {}).get("device"), self.list_layout)
 
     def update_dev_section(self):
         """Due schede nel pannello: "Fonti" (le app) e "Dispositivi" (microfoni e casse). Quella
         scelta prende il posto dell'altra. La scheda Dispositivi compare solo se c'e' almeno un
         dispositivo. Cambia solo cosa si vede nel pannello: i canali nel mixer restano tra le app,
         nel loro ordine."""
-        has = self.dev_layout.count() > 0
+        has = any(lay.count() for lay in self.dev_layouts.values())
         show = has and self._dev_open
         self.dev_btn.setVisible(has)
         for btn, on in ((self.fonti_btn, not show), (self.dev_btn, show)):
@@ -5389,6 +5403,8 @@ class Mixer(QWidget):
         for name, row in self.rows.items():
             row.setVisible((not q or q in self.display_name(name).lower() or q in name.lower())
                            and (not hide_idle or name in self.groups))
+        for flow, head in self.dev_heads.items():  # niente titolo senza righe sotto
+            head.setVisible(any(r.kind == flow and not r.isHidden() for r in self.rows.values()))
 
     def rename_source(self, name):
         info = self.sources[name]
@@ -5975,7 +5991,7 @@ class Mixer(QWidget):
         for name in list(self.strips):
             self.strips.pop(name).deleteLater()
         self.layout_strips()
-        for lay in (self.list_layout, self.dev_layout):
+        for lay in (self.list_layout, *self.dev_layouts.values()):
             while lay.count():
                 w = lay.takeAt(0).widget()
                 if w is not None:
@@ -6908,7 +6924,7 @@ class Mixer(QWidget):
         L'ordine e' unico: vale per i canali e per l'elenco Fonti, ed e' quello del file
         sources.json (le nuove fonti si aggiungono in fondo).
 
-        same_kind=True e' il riordino dentro un elenco che mostra solo app oppure solo dispositivi:
+        same_kind=True e' il riordino dentro un elenco che mostra solo app, solo casse o solo microfoni:
         le altre fonti non si vedono, quindi non si devono spostare. L'elemento cambia posto solo
         tra quelli del suo tipo: ogni tipo tiene le sue posizioni nell'ordine generale, e i
         dispositivi restano dove sono in mezzo alle app (trascinare un dispositivo "in fondo"
@@ -6922,8 +6938,8 @@ class Mixer(QWidget):
             self.set_order_mode("custom", relayout=False)
         if same_kind:
             names = list(self.sources)
-            is_dev = bool(self.sources[name].get("device"))
-            slots = [i for i, n in enumerate(names) if bool(self.sources[n].get("device")) == is_dev]
+            flow = self.sources[name].get("device")
+            slots = [i for i, n in enumerate(names) if self.sources[n].get("device") == flow]
             kind = [names[i] for i in slots if names[i] != name]
             kind.insert(kind.index(before) if before in kind else len(kind), name)
             for i, n in zip(slots, kind):
