@@ -737,27 +737,6 @@ def save_sources(sources):
         pass
 
 
-PENDING_FILE = os.path.join(CONFIG_DIR, "reset_pending.json")
-
-
-def load_pending():
-    """Nomi delle fonti eliminate che vanno reimpostate alla prossima apparizione."""
-    try:
-        data = read_json(PENDING_FILE)
-        return set(data) if isinstance(data, list) else set()
-    except Exception:
-        return set()
-
-
-def save_pending(names):
-    try:
-        os.makedirs(CONFIG_DIR, exist_ok=True)
-        with safe_write(PENDING_FILE) as f:
-            json.dump(sorted(names), f, ensure_ascii=False)
-    except Exception:
-        pass
-
-
 SETTINGS_FILE = os.path.join(CONFIG_DIR, "settings.json")
 DEFAULT_SETTINGS = {
     "close_to_tray": False,
@@ -1264,7 +1243,7 @@ class Bridge(QObject):
 
 
 APP_ID = "audiomixer-single-instance"
-APP_VERSION = "0.6.4"
+APP_VERSION = "0.6.5"
 # "utente/repository" su GitHub: con le release pubblicate li', il mixer avvisa delle versioni nuove
 UPDATE_REPO = "DrP1n/AudioMixer"
 
@@ -1406,17 +1385,6 @@ def session_key(s):
         return s.InstanceIdentifier or id(s)
     except Exception:
         return id(s)
-
-
-def reset_audio(sessions):
-    """Volume al 100% e audio non mutato."""
-    for s in sessions:
-        try:
-            vol = s.SimpleAudioVolume
-            vol.SetMasterVolume(1.0, None)
-            vol.SetMute(0, None)
-        except Exception:
-            pass
 
 
 def channel_peaks(meter):
@@ -3385,13 +3353,15 @@ class SourceRow(QFrame):
     def contextMenuEvent(self, e):
         menu = QMenu(self)
         rename = menu.addAction(tr("Rinomina…"))
-        busy = tr("Elimina (dispositivo collegato)") if self.kind else tr("Elimina (app in uso)")
-        delete = menu.addAction(tr("Elimina") if not self.active else busy)
-        delete.setEnabled(not self.active)
+        delete = None
+        if self.kind:  # le app non si eliminano: quelle chiuse si nascondono (opzione hide_idle)
+            delete = menu.addAction(tr("Elimina (dispositivo collegato)") if self.active
+                                    else tr("Elimina"))
+            delete.setEnabled(not self.active)
         chosen = menu.exec(e.globalPos())
         if chosen == rename:
             self.on_rename(self.name)
-        elif chosen == delete:
+        elif chosen is not None and chosen == delete:
             self.on_delete(self.name)
 
     def refresh_style(self):
@@ -3462,8 +3432,8 @@ class SettingsDialog(QDialog):
                  tr("Un'app che riproduce audio per la prima volta compare subito nel mixer, "
                     "senza cliccare l'occhio."), self._option("auto_show")),
                 (tr("Nascondi le app chiuse"),
-                 tr("Le strisce delle app che non stanno suonando spariscono e tornano quando "
-                    "l'app riparte."), self._option("hide_idle")),
+                 tr("Le app chiuse spariscono dal mixer e dall'elenco Fonti e tornano, con le "
+                    "loro impostazioni, quando ripartono."), self._option("hide_idle")),
             ]),
             (tr("Aiuto"), None, [
                 (tr("Guida rapida"), tr("Un giro guidato tra tutte le parti del mixer."), guide),
@@ -4425,7 +4395,7 @@ class ReorderArea(QWidget):
         found = []
         for i in range(lay.count() if lay is not None else 0):
             w = lay.itemAt(i).widget()
-            if isinstance(w, self.item_type):
+            if isinstance(w, self.item_type) and not w.isHidden():
                 found.append(w)
         return found
 
@@ -5120,10 +5090,8 @@ class Mixer(QWidget):
         self.rows = {}
         self.groups = {}
         self.sources = load_sources()
-        self.pending_reset = load_pending()
         if self.sources.pop(SYSTEM_NAME, None) is not None:
             save_sources(self.sources)
-        self.pending_reset.discard(SYSTEM_NAME)
         self.settings = load_settings()
         UI["strip_w"] = self.settings["strip_width"]
         configure_appearance(self.settings["theme"], self.settings["accent"],
@@ -5420,14 +5388,16 @@ class Mixer(QWidget):
         self.rows[name] = row
         self._row_layout(name).addWidget(row)
         self.update_dev_section()
-        if self.search.text():
-            self.apply_search()
+        self.apply_search()
 
     def apply_search(self, _text=None):
-        """Ricerca rapida: nell'elenco restano solo le fonti il cui nome contiene il testo."""
+        """Ricerca rapida: nell'elenco restano solo le fonti il cui nome contiene il testo (e,
+        con "Nascondi le app chiuse", solo le app aperte)."""
+        hide_idle = self.settings.get("hide_idle")
         q = self.search.text().strip().lower()
         for name, row in self.rows.items():
-            row.setVisible(not q or q in self.display_name(name).lower() or q in name.lower())
+            row.setVisible((not q or q in self.display_name(name).lower() or q in name.lower())
+                           and (bool(row.kind) or not hide_idle or name in self.groups))
 
     def rename_source(self, name):
         info = self.sources[name]
@@ -5453,26 +5423,15 @@ class Mixer(QWidget):
             self.relayout_order()
 
     def delete_source(self, name):
-        """Toglie una fonte dall'elenco (solo se l'app non sta suonando)."""
+        """Toglie un dispositivo dall'elenco (solo se non e' collegato)."""
         if self.groups.get(name):
             return
-        is_device = bool(self.sources.get(name, {}).get("device"))
-        if is_device:
-            text = tr("Eliminare «{name}» dall'elenco?\n"
-                      "Verranno tolti anche il nome personalizzato e il tasto rapido.\n"
-                      "Se il dispositivo è collegato ricomparirà nell'elenco, nascosto.",
-                      name=self.display_name(name))
-        else:
-            text = tr("Eliminare «{name}» dall'elenco?\n"
-                      "Verranno tolti anche il nome personalizzato e il tasto rapido.\n"
-                      "Alla prossima apertura dell'app, volume e mute torneranno ai valori "
-                      "normali (100%, non mutata) e la fonte ricomparirà nell'elenco.",
-                      name=name)
+        text = tr("Eliminare «{name}» dall'elenco?\n"
+                  "Verranno tolti anche il nome personalizzato e il tasto rapido.\n"
+                  "Se il dispositivo è collegato ricomparirà nell'elenco, nascosto.",
+                  name=self.display_name(name))
         if not confirm(self, tr("Elimina fonte"), text, tr("Elimina")):
             return
-        if not is_device:
-            self.pending_reset.add(name)
-            save_pending(self.pending_reset)
         self.unregister(name)
         self.unregister_vol_keys(name)
         if self.config.pop(name, None) is not None:
@@ -5521,13 +5480,6 @@ class Mixer(QWidget):
                 pass
         self.fader.recover_sessions(groups, system)
 
-        for name, sessions in groups.items():
-            if name in self.pending_reset:
-                reset_audio(sessions)
-                self.run_router({x.ProcessId for x in sessions}, None, lambda err: None)
-                self.pending_reset.discard(name)
-                save_pending(self.pending_reset)
-
         changed = False
         added = False
         for name, sessions in groups.items():
@@ -5551,6 +5503,7 @@ class Mixer(QWidget):
             row.set_active(name in groups)
             if row.kind:
                 row.set_default(name in self.default_devices)
+        self.apply_search()
         for name in list(self.solo_set):
             if name not in groups:
                 self.solo_set.discard(name)
@@ -6074,6 +6027,7 @@ class Mixer(QWidget):
         if key == "fade_ms":
             self.fader.set_duration(value)
         if key == "hide_idle":
+            self.apply_search()
             self.sync_strips()
         if key == "plugins":
             self.plugins = load_plugins(self.plugin_api) if value else []
