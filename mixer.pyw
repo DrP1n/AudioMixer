@@ -1243,7 +1243,7 @@ class Bridge(QObject):
 
 
 APP_ID = "audiomixer-single-instance"
-APP_VERSION = "0.6.5"
+APP_VERSION = "0.6.6"
 # "utente/repository" su GitHub: con le release pubblicate li', il mixer avvisa delle versioni nuove
 UPDATE_REPO = "DrP1n/AudioMixer"
 
@@ -3296,13 +3296,12 @@ class ElidedLabel(QLabel):
 class SourceRow(QFrame):
     """Una riga dell'elenco Fonti: icona, nome e occhio."""
 
-    def __init__(self, name, exe, visible, on_visible, on_rename, on_delete, title=None, kind=None):
+    def __init__(self, name, exe, visible, on_visible, on_rename, title=None, kind=None):
         super().__init__()
         self.setObjectName("row")
         self.name = name
         self.kind = kind
         self.on_rename = on_rename
-        self.on_delete = on_delete
         self.active = True
         self.default = False
         self._title = display_case(title or name)
@@ -3353,16 +3352,8 @@ class SourceRow(QFrame):
     def contextMenuEvent(self, e):
         menu = QMenu(self)
         rename = menu.addAction(tr("Rinomina…"))
-        delete = None
-        if self.kind:  # le app non si eliminano: quelle chiuse si nascondono (opzione hide_idle)
-            delete = menu.addAction(tr("Elimina (dispositivo collegato)") if self.active
-                                    else tr("Elimina"))
-            delete.setEnabled(not self.active)
-        chosen = menu.exec(e.globalPos())
-        if chosen == rename:
+        if menu.exec(e.globalPos()) == rename:
             self.on_rename(self.name)
-        elif chosen is not None and chosen == delete:
-            self.on_delete(self.name)
 
     def refresh_style(self):
         if not self.active:
@@ -3431,9 +3422,9 @@ class SettingsDialog(QDialog):
                 (tr("Mostra da sole le app nuove"),
                  tr("Un'app che riproduce audio per la prima volta compare subito nel mixer, "
                     "senza cliccare l'occhio."), self._option("auto_show")),
-                (tr("Nascondi le app chiuse"),
-                 tr("Le app chiuse spariscono dal mixer e dall'elenco Fonti e tornano, con le "
-                    "loro impostazioni, quando ripartono."), self._option("hide_idle")),
+                (tr("Nascondi app chiuse e dispositivi scollegati"),
+                 tr("Spariscono dal mixer e dagli elenchi e tornano, con nome e impostazioni, "
+                    "quando li riapri o li ricolleghi."), self._option("hide_idle")),
             ]),
             (tr("Aiuto"), None, [
                 (tr("Guida rapida"), tr("Un giro guidato tra tutte le parti del mixer."), guide),
@@ -5383,7 +5374,7 @@ class Mixer(QWidget):
     def add_row(self, name):
         info = self.sources[name]
         row = SourceRow(name, info.get("exe"), info.get("visible", False),
-                        self.on_visible, self.rename_source, self.delete_source,
+                        self.on_visible, self.rename_source,
                         info.get("alias") or info.get("dev_name"), info.get("device"))
         self.rows[name] = row
         self._row_layout(name).addWidget(row)
@@ -5392,12 +5383,12 @@ class Mixer(QWidget):
 
     def apply_search(self, _text=None):
         """Ricerca rapida: nell'elenco restano solo le fonti il cui nome contiene il testo (e,
-        con "Nascondi le app chiuse", solo le app aperte)."""
+        con hide_idle, solo app aperte e dispositivi collegati)."""
         hide_idle = self.settings.get("hide_idle")
         q = self.search.text().strip().lower()
         for name, row in self.rows.items():
             row.setVisible((not q or q in self.display_name(name).lower() or q in name.lower())
-                           and (bool(row.kind) or not hide_idle or name in self.groups))
+                           and (not hide_idle or name in self.groups))
 
     def rename_source(self, name):
         info = self.sources[name]
@@ -5421,30 +5412,6 @@ class Mixer(QWidget):
             self.strips[name].set_title(title)
         if self.settings.get("order_mode") == "az":
             self.relayout_order()
-
-    def delete_source(self, name):
-        """Toglie un dispositivo dall'elenco (solo se non e' collegato)."""
-        if self.groups.get(name):
-            return
-        text = tr("Eliminare «{name}» dall'elenco?\n"
-                  "Verranno tolti anche il nome personalizzato e il tasto rapido.\n"
-                  "Se il dispositivo è collegato ricomparirà nell'elenco, nascosto.",
-                  name=self.display_name(name))
-        if not confirm(self, tr("Elimina fonte"), text, tr("Elimina")):
-            return
-        self.unregister(name)
-        self.unregister_vol_keys(name)
-        if self.config.pop(name, None) is not None:
-            save_config(self.config)
-        self.sources.pop(name, None)
-        save_sources(self.sources)
-        row = self.rows.pop(name, None)
-        if row is not None:
-            self.list_layout.removeWidget(row)
-            self.dev_layout.removeWidget(row)
-            row.deleteLater()
-        self.update_dev_section()
-        self.sync_strips()
 
     def on_visible(self, name, visible):
         self.sources[name]["visible"] = visible
@@ -5668,7 +5635,7 @@ class Mixer(QWidget):
     def sync_devices(self, groups):
         """Aggiunge ai gruppi i dispositivi collegati (come se fossero app che suonano) e
         registra tra le fonti quelli nuovi, nascosti. Un dispositivo scollegato resta
-        nell'elenco: il suo canale si disabilita, come quello di un'app chiusa."""
+        tra le fonti: il suo canale si disabilita o si nasconde, come quello di un'app chiusa."""
         present = {}
         for flow, devices in (("out", self.render_devices()), ("in", self.capture_devices())):
             for d in devices:
@@ -5724,10 +5691,10 @@ class Mixer(QWidget):
             pass
 
     def sync_strips(self):
-        """Mostra nel mixer solo le fonti con l'occhio acceso (e, se richiesto, solo le app aperte)."""
+        """Mostra nel mixer solo le fonti con l'occhio acceso (e, con hide_idle, solo se attive)."""
         hide_idle = self.settings.get("hide_idle")
         wanted = [n for n, i in self.sources.items() if i.get("visible")
-                  and not (hide_idle and not i.get("device") and n not in self.groups)]
+                  and not (hide_idle and n not in self.groups)]
         changed = False
         solo_changed = False
         for name in list(self.strips):

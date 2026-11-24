@@ -173,6 +173,25 @@ class SafeFilesTest(unittest.TestCase):
 
 
 class MiscTest(unittest.TestCase):
+    def test_hide_idle_and_custom_names_survive(self):
+        shown = {}
+        rows = {n: SimpleNamespace(setVisible=lambda v, n=n: shown.__setitem__(n, v))
+                for n in ("app", "dev:cuffie")}
+        w = SimpleNamespace(settings={"hide_idle": True}, search=SimpleNamespace(text=lambda: ""),
+                            sources={"app": {"alias": "Mia"}, "dev:cuffie": {"dev_name": "Cuffie"}},
+                            rows=rows, groups={})
+        w.display_name = lambda n: mixer.Mixer.display_name(w, n)
+        mixer.Mixer.apply_search(w)
+        self.assertEqual(shown, {"app": False, "dev:cuffie": False})
+        old, mixer.SOURCES_FILE = mixer.SOURCES_FILE, os.path.join(tempfile.mkdtemp(), "s.json")
+        mixer.save_sources(w.sources)
+        w.sources = mixer.load_sources()  # app chiusa, mixer riavviato, app riaperta
+        mixer.SOURCES_FILE = old
+        w.groups = {n: [1] for n in rows}
+        mixer.Mixer.apply_search(w)
+        self.assertEqual(shown, {"app": True, "dev:cuffie": True})
+        self.assertEqual(w.display_name("app"), "Mia")
+
     def test_versions(self):
         self.assertGreater(mixer.version_tuple("v0.4.0"), mixer.version_tuple("0.3.9"))
         self.assertGreater(mixer.version_tuple("0.3.10"), mixer.version_tuple("0.3.9"))
