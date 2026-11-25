@@ -334,6 +334,8 @@
     "Premi il tasto o la combinazione per «{what}» di «{name}».\nEsc = togli il tasto.": "Нажмите клавишу или сочетание для «{what}» приложения «{name}».\nEsc — убрать клавишу.",
     "Il tasto {key} è già assegnato a un'altra funzione.": "Клавиша {key} уже назначена другой функции.",
     "Tasti volume": "Клавиши громкости",
-    "microfono mutato": "микрофон выключен"
+    "microfono mutato": "микрофон выключен",
+    "Riduci a icona": "Свернуть",
+    "Ingrandisci": "Развернуть"
   }
 }

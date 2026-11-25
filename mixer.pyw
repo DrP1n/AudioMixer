@@ -457,6 +457,13 @@ QPushButton#solo:checked { background: ${solo}; color: ${solo_text}; }
 QPushButton#bar { font-size: ${p14}; border: none; border-radius: ${p8}; padding: ${p4} ${p10}; }
 QPushButton#bar:hover { background: ${raised}; }
 QPushButton#bar:checked { background: ${accent}; color: ${on_accent}; }
+QPushButton#winbtn, QPushButton#winclose { font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
+                  font-size: ${p10}; border: none; border-radius: ${p8};
+                  min-width: ${p20}; padding: ${p7} ${p10}; color: ${text}; background: transparent; }
+QPushButton#winbtn:hover { background: ${raised}; }
+QPushButton#winbtn:pressed { background: ${raised_hover}; }
+QPushButton#winclose:hover { background: #c42b1c; color: #ffffff; }
+QPushButton#winclose:pressed { background: #a32416; color: #ffffff; }
 QPushButton#preset { font-size: ${p12}; font-weight: 600; background: ${raised};
                      border-radius: ${p8}; padding: ${p5} ${p12}; }
 QPushButton#preset:hover { background: ${raised_hover}; }
@@ -625,6 +632,11 @@ QPushButton#bar, QPushButton#preset { font-size: ${p14}; border: 1px solid trans
                   border-radius: ${p3}; padding: ${p2} ${p7}; }
 QPushButton#bar:hover, QPushButton#preset:hover { background: ${raised}; }
 QPushButton#bar:checked { background: ${accent}; color: ${on_accent}; }
+QPushButton#winbtn, QPushButton#winclose { font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
+                  font-size: ${p10}; border: 1px solid transparent; border-radius: ${p3};
+                  min-width: ${p20}; padding: ${p5} ${p10}; background: transparent; }
+QPushButton#winbtn:hover { background: ${raised}; }
+QPushButton#winclose:hover { background: #c42b1c; color: #ffffff; }
 QCheckBox::indicator { width: ${p14}; height: ${p14}; border: 1px solid ${check_border};
                        background: ${input}; border-radius: ${p2}; }
 QCheckBox::indicator:checked { background: ${accent}; border-color: ${accent}; }
@@ -1243,7 +1255,7 @@ class Bridge(QObject):
 
 
 APP_ID = "audiomixer-single-instance"
-APP_VERSION = "0.6.7"
+APP_VERSION = "0.6.8"
 # "utente/repository" su GitHub: con le release pubblicate li', il mixer avvisa delle versioni nuove
 UPDATE_REPO = "DrP1n/AudioMixer"
 
@@ -5033,10 +5045,71 @@ class TourOverlay(QWidget):
         self.finished.emit()
 
 
+# --- Finestra senza barra del titolo di Windows ------------------------------------------------
+# La finestra e' "frameless" per Qt, ma a livello Windows le rimettiamo gli stili di una finestra
+# normale (bordo ridimensionabile, riduci/ingrandisci). WM_NCCALCSIZE toglie il bordo disegnato da
+# Windows e WM_NCHITTEST dice a Windows dove sono i bordi e la "barra del titolo" (la barra
+# dell'app): cosi' restano trascinamento, ridimensionamento, doppio clic per ingrandire, Aero Snap
+# (anche Win+frecce), ombra, animazioni e il menu di sistema (Alt+Spazio).
+_WM_NCCALCSIZE, _WM_NCHITTEST = 0x0083, 0x0084
+_HT = {"client": 1, "caption": 2, "left": 10, "right": 11, "top": 12, "topleft": 13,
+       "topright": 14, "bottom": 15, "bottomleft": 16, "bottomright": 17}
+_GLYPH_MIN, _GLYPH_MAX, _GLYPH_RESTORE, _GLYPH_CLOSE = "\uE921", "\uE922", "\uE923", "\uE8BB"
+
+
+def _native_frame_setup(hwnd):
+    """Rimette gli stili nativi alla finestra frameless e chiede a Windows ombra e angoli
+    arrotondati (Windows 11)."""
+    if sys.platform != "win32" or not hwnd:
+        return
+    import ctypes
+    from ctypes import wintypes
+    user32 = ctypes.windll.user32
+    GWL_STYLE = -16
+    WS_CAPTION, WS_THICKFRAME, WS_SYSMENU = 0x00C00000, 0x00040000, 0x00080000
+    WS_MINIMIZEBOX, WS_MAXIMIZEBOX = 0x00020000, 0x00010000
+    get_long = getattr(user32, "GetWindowLongPtrW", user32.GetWindowLongW)
+    set_long = getattr(user32, "SetWindowLongPtrW", user32.SetWindowLongW)
+    get_long.restype = ctypes.c_ssize_t
+    get_long.argtypes = [wintypes.HWND, ctypes.c_int]
+    set_long.restype = ctypes.c_ssize_t
+    set_long.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_ssize_t]
+    style = get_long(hwnd, GWL_STYLE)
+    want = WS_CAPTION | WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX
+    if style & want != want:
+        set_long(hwnd, GWL_STYLE, style | want)
+        # SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED
+        user32.SetWindowPos(wintypes.HWND(hwnd), None, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0004 | 0x0010 | 0x0020)
+    try:
+        dwm = ctypes.windll.dwmapi
+
+        class MARGINS(ctypes.Structure):
+            _fields_ = [("l", ctypes.c_int), ("r", ctypes.c_int), ("t", ctypes.c_int), ("b", ctypes.c_int)]
+        dwm.DwmExtendFrameIntoClientArea(wintypes.HWND(hwnd), ctypes.byref(MARGINS(1, 1, 1, 1)))
+        pref = ctypes.c_int(2)  # DWMWA_WINDOW_CORNER_PREFERENCE = DWMWCP_ROUND
+        dwm.DwmSetWindowAttribute(wintypes.HWND(hwnd), 33, ctypes.byref(pref), ctypes.sizeof(pref))
+    except Exception:
+        pass
+
+
+def _resize_border(hwnd, horizontal):
+    """Spessore (pixel fisici) del bordo che Windows aggiunge fuori dallo schermo da ingrandita."""
+    import ctypes
+    user32 = ctypes.windll.user32
+    try:
+        dpi = user32.GetDpiForWindow(ctypes.c_void_p(hwnd))
+        frame = user32.GetSystemMetricsForDpi(32 if horizontal else 33, dpi)  # SM_CX/CYSIZEFRAME
+        return frame + user32.GetSystemMetricsForDpi(92, dpi)  # SM_CXPADDEDBORDER
+    except Exception:
+        return user32.GetSystemMetrics(32 if horizontal else 33) + user32.GetSystemMetrics(92)
+
+
 class Mixer(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"Audio Mixer v{APP_VERSION} (PID {os.getpid()})")
+        # niente barra del titolo di Windows: riduci/ingrandisci/chiudi sono nella barra dell'app
+        self.setWindowFlag(Qt.FramelessWindowHint, True)
         self.resize(900, 520)
         self.setMinimumSize(520, 420)
         self._save_timer = QTimer(self, singleShot=True, interval=500,
@@ -5315,6 +5388,22 @@ class Mixer(QWidget):
         bar.addStretch(1)
         bar.addWidget(self.pin_btn)
         bar.addWidget(self.settings_btn)
+        bar.addSpacing(sc(6))
+        self.min_btn = QPushButton(_GLYPH_MIN)
+        self.min_btn.setObjectName("winbtn")
+        self.min_btn.clicked.connect(self.showMinimized)
+        self.max_btn = QPushButton(_GLYPH_MAX)
+        self.max_btn.setObjectName("winbtn")
+        self.max_btn.clicked.connect(self.toggle_maximized)
+        self.close_btn = QPushButton(_GLYPH_CLOSE)
+        self.close_btn.setObjectName("winclose")
+        self.close_btn.clicked.connect(self.close)
+        for b in (self.min_btn, self.max_btn, self.close_btn):
+            b.setFocusPolicy(Qt.NoFocus)
+            bar.addWidget(b)
+        self.title_bar = bar
+        self._drag_widgets = (logo, title)
+        self.update_window_buttons()
 
         root = QVBoxLayout(self)
         root.setContentsMargins(*((6, 6, 6, 6) if is_classic() else
@@ -5785,7 +5874,92 @@ class Mixer(QWidget):
             self._fonti_w = max(self.fonti_min(), min(sc(FONTI_MAX), self.left.width() - sc(TOGGLE_W)))
             self._save_timer.start()
 
+    # --- barra del titolo integrata ---
+    def toggle_maximized(self):
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
+
+    def update_window_buttons(self):
+        """Icona e suggerimenti dei pulsanti riduci/ingrandisci/chiudi."""
+        if not hasattr(self, "max_btn"):
+            return
+        maxed = self.isMaximized()
+        self.max_btn.setText(_GLYPH_RESTORE if maxed else _GLYPH_MAX)
+        self.max_btn.setToolTip(tr("Ripristina") if maxed else tr("Ingrandisci"))
+        self.min_btn.setToolTip(tr("Riduci a icona"))
+        self.close_btn.setToolTip(tr("Chiudi"))
+
+    def changeEvent(self, e):
+        super().changeEvent(e)
+        if e.type() == e.Type.WindowStateChange:
+            self.update_window_buttons()
+
+    def _hit_test(self, hwnd, x, y):
+        """Cosa c'e' nel punto (x, y) dello schermo, in pixel fisici: bordo, barra o contenuto."""
+        import ctypes
+        from ctypes import wintypes
+        r = wintypes.RECT()
+        ctypes.windll.user32.GetWindowRect(wintypes.HWND(hwnd), ctypes.byref(r))
+        dpr = self.devicePixelRatioF() or 1.0
+        if not (self.isMaximized() or self.isFullScreen()):
+            b = max(4, round(6 * dpr))
+            left, right = x < r.left + b, x >= r.right - b
+            top, bottom = y < r.top + b, y >= r.bottom - b
+            if top and left:
+                return _HT["topleft"]
+            if top and right:
+                return _HT["topright"]
+            if bottom and left:
+                return _HT["bottomleft"]
+            if bottom and right:
+                return _HT["bottomright"]
+            if left:
+                return _HT["left"]
+            if right:
+                return _HT["right"]
+            if top:
+                return _HT["top"]
+            if bottom:
+                return _HT["bottom"]
+        pos = QPoint(int((x - r.left) / dpr), int((y - r.top) / dpr))
+        bar = getattr(self, "title_bar", None)
+        if bar is None or pos.y() > bar.geometry().bottom() + self.layout().spacing() // 2:
+            return _HT["client"]
+        w = self.childAt(pos)
+        if w is None or w in self._drag_widgets:
+            return _HT["caption"]
+        return _HT["client"]
+
+    def nativeEvent(self, event_type, message):
+        if sys.platform == "win32" and event_type == b"windows_generic_MSG":
+            try:
+                import ctypes
+                from ctypes import wintypes
+                msg = wintypes.MSG.from_address(int(message))
+                hwnd = msg.hWnd or 0
+                if hwnd and msg.message == _WM_NCCALCSIZE:
+                    if msg.wParam and ctypes.windll.user32.IsZoomed(wintypes.HWND(hwnd)):
+                        # da ingrandita Windows sposta la finestra di un bordo fuori dallo
+                        # schermo: lo togliamo, se no il contenuto viene tagliato ai lati
+                        rect = wintypes.RECT.from_address(msg.lParam)
+                        bx, by = _resize_border(hwnd, True), _resize_border(hwnd, False)
+                        rect.left += bx
+                        rect.right -= bx
+                        rect.top += by
+                        rect.bottom -= by
+                    return True, 0
+                if hwnd and msg.message == _WM_NCHITTEST:
+                    lp = msg.lParam & 0xFFFFFFFF
+                    x, y = ctypes.c_short(lp & 0xFFFF).value, ctypes.c_short(lp >> 16).value
+                    return True, self._hit_test(hwnd, x, y)
+            except Exception:
+                pass
+        return super().nativeEvent(event_type, message)
+
     def showEvent(self, e):
+        _native_frame_setup(int(self.winId()))
         super().showEvent(e)
         if not self._sizes_ready:
             self._sizes_ready = True
@@ -5984,6 +6158,7 @@ class Mixer(QWidget):
         self.pin_btn.setToolTip(tr("Sempre in primo piano"))
         self.settings_btn.setToolTip(tr("Impostazioni"))
         self.preset_btn.setToolTip(tr("Preset: salva e applica volumi, mute, uscite e fonti visibili"))
+        self.update_window_buttons()
         self.master.retranslate()
         self.system.retranslate()
         self.update_order_button()
@@ -6082,6 +6257,7 @@ class Mixer(QWidget):
         was_visible = self.isVisible()
         geo = self.saveGeometry()
         self.setWindowFlag(Qt.WindowStaysOnTopHint, on)
+        _native_frame_setup(int(self.winId()))
         self.restoreGeometry(geo)
         if was_visible:
             self.show()

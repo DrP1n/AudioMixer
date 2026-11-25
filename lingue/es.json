@@ -334,6 +334,8 @@
     "Premi il tasto o la combinazione per «{what}» di «{name}».\nEsc = togli il tasto.": "Pulsa la tecla o combinación para «{what}» de «{name}».\nEsc = quitar la tecla.",
     "Il tasto {key} è già assegnato a un'altra funzione.": "La tecla {key} ya está asignada a otra función.",
     "Tasti volume": "Teclas de volumen",
-    "microfono mutato": "micrófono silenciado"
+    "microfono mutato": "micrófono silenciado",
+    "Riduci a icona": "Minimizar",
+    "Ingrandisci": "Maximizar"
   }
 }

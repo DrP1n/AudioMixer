@@ -334,6 +334,8 @@
     "Premi il tasto o la combinazione per «{what}» di «{name}».\nEsc = togli il tasto.": "Press the key or combination for “{what}” of “{name}”.\nEsc = remove the key.",
     "Il tasto {key} è già assegnato a un'altra funzione.": "The key {key} is already assigned to another function.",
     "Tasti volume": "Volume keys",
-    "microfono mutato": "microphone muted"
+    "microfono mutato": "microphone muted",
+    "Riduci a icona": "Minimize",
+    "Ingrandisci": "Maximize"
   }
 }
